@@ -208,7 +208,7 @@ export default function App() {
               onSendMessage={(msg) =>
                 sendMessage(
                   msg,
-                  documents.map((d) => d.id),
+                  selectedDocId ? [selectedDocId] : documents.map((d) => d.id),
                   selectedModel,
                 )
               }

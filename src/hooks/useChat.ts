@@ -7,6 +7,11 @@ export interface Source {
   page_number: number;
   chunk_id: string;
   text: string;
+  confidence?: number;
+  is_primary?: boolean;
+  char_start_pos?: number;
+  char_end_pos?: number;
+  citation_number?: number;
 }
 
 export interface Message {

@@ -25,14 +25,18 @@ export const chatService = {
     const systemInstruction = `You are a helpful document assistant. Answer questions based on the provided context.
 
 IMPORTANT INSTRUCTIONS:
-- If the context contains relevant information, provide a clear answer and say "Please check the citations below for more details."
+- Provide clear, direct answers based on the context.
+- Use inline citations [1], [2], [3] etc. to reference sources in order.
+- Place citations immediately after the relevant sentence or fact.
+- If the context contains relevant information, answer it clearly.
 - If the context does NOT contain the answer, say "The provided document does not contain information about this topic."
-- NEVER say "I do not know" - either answer from context or say the document doesn't contain the information.
-- Be concise and direct.
-- Always reference page numbers when answering.
+- Be concise and accurate.
+
+Example format:
+State in React is an object that holds data [1]. It can be updated using setState() [2].
     
 Context:
-${contextText}
+${contextText.split('\n\n').map((chunk, idx) => `[${idx + 1}] ${chunk}`).join('\n\n')}
 `;
 
     // 5. Generate Response (Streaming)
@@ -77,27 +81,73 @@ ${contextText}
     // 6. Save Assistant Message
     db.addMessage(chatId, 'assistant', fullResponse);
     
-    // 7. Send Citations
+    // 7. Send Citations with Smart Answer Text Extraction
     const sources = relevantChunks.map(c => {
       const doc = db.getDocument(c.metadata.document_id) as any;
+      const chunkText = c.metadata.text;
       
-      // Extract most relevant sentence from chunk that matches answer context
-      let excerptText = c.metadata.text;
+      // Strategy 1: Try to find answer text in the chunk by matching response content
+      let excerptText = chunkText;
+      let charStartPos = 0;
+      let charEndPos = chunkText.length;
+      let confidence = 0;
       
-      // If text is longer than 150 chars, try to find a complete sentence
-      if (excerptText.length > 150) {
-        const sentences = excerptText.split(/[.!?]+/);
-        let selectedSentence = sentences[0] || excerptText.substring(0, 150);
+      // Extract first 2-3 sentences from response as search text
+      const responseSentences = fullResponse.split(/[.!?]+/).filter(s => s.trim().length > 10).slice(0, 3);
+      
+      for (const respSentence of responseSentences) {
+        const keywords = respSentence
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(w => w.length > 4)
+          .slice(0, 3);
         
-        // Try to find a sentence that contains key question words
-        const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        for (const sentence of sentences) {
-          if (questionWords.some(word => sentence.toLowerCase().includes(word))) {
-            selectedSentence = sentence;
+        // Search chunk for these keywords
+        let bestMatch = -1;
+        let matchedCount = 0;
+        
+        for (const keyword of keywords) {
+          const idx = chunkText.toLowerCase().indexOf(keyword);
+          if (idx !== -1) {
+            matchedCount++;
+            if (bestMatch === -1 || idx < bestMatch) bestMatch = idx;
+          }
+        }
+        
+        if (matchedCount > 0) {
+          confidence = matchedCount / keywords.length;
+          if (bestMatch !== -1) {
+            // Find sentence boundaries around match
+            const beforeMatch = chunkText.substring(0, bestMatch).lastIndexOf('.');
+            const afterMatch = chunkText.indexOf('.', bestMatch + 100);
+            
+            charStartPos = beforeMatch !== -1 ? beforeMatch + 1 : 0;
+            charEndPos = afterMatch !== -1 ? afterMatch + 1 : Math.min(bestMatch + 250, chunkText.length);
+            excerptText = chunkText.substring(charStartPos, charEndPos).trim();
             break;
           }
         }
-        excerptText = selectedSentence.trim().substring(0, 200);
+      }
+      
+      // Fallback: If no good match found, extract first relevant sentence
+      if (confidence === 0 || excerptText.length < 20) {
+        const sentences = chunkText.split(/[.!?]+/);
+        const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        
+        let bestSentence = sentences[0] || chunkText.substring(0, 150);
+        for (const sentence of sentences) {
+          if (questionWords.some(word => sentence.toLowerCase().includes(word))) {
+            bestSentence = sentence;
+            confidence = 0.5;
+            break;
+          }
+        }
+        excerptText = bestSentence.trim().substring(0, 300);
+      }
+      
+      // Ensure we have valid text
+      if (!excerptText || excerptText.length < 10) {
+        excerptText = chunkText.substring(0, Math.min(200, chunkText.length));
       }
       
       return {
@@ -105,7 +155,10 @@ ${contextText}
         document_id: c.metadata.document_id,
         page_number: c.metadata.page_number,
         chunk_id: c.id,
-        text: excerptText
+        text: excerptText,
+        char_start_pos: charStartPos,
+        char_end_pos: charEndPos,
+        confidence: Math.round(confidence * 100)
       };
     });
     

@@ -31,6 +31,16 @@ class LocalVectorStore implements VectorStore {
     // 2. Compute Cosine Similarity
     const results = chunks.map((chunk: any) => {
       const score = this.cosineSimilarity(vector, chunk.embedding);
+      let fileName = 'Unknown';
+      try {
+        const doc = db.getDocument(chunk.document_id) as any;
+        if (doc && doc.original_name) {
+          fileName = doc.original_name;
+        }
+      } catch (e) {
+        console.warn(`Failed to get document ${chunk.document_id} for chunk ${chunk.id}`, e);
+      }
+      
       return {
         id: chunk.id,
         score,
@@ -38,7 +48,9 @@ class LocalVectorStore implements VectorStore {
           text: chunk.content,
           page_number: chunk.page_number,
           document_id: chunk.document_id,
-          chunk_index: chunk.chunk_index
+          chunk_index: chunk.chunk_index,
+          file_name: fileName,
+          confidence: Math.round(score * 100)
         }
       };
     });

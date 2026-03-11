@@ -30,7 +30,7 @@ export function PDFViewer({
     setNumPages(numPages);
   }
 
-  // Improved highlighting effect
+  // Improved highlighting effect with exact text matching
   useEffect(() => {
     if (!highlightText || !containerRef.current) return;
 
@@ -47,48 +47,135 @@ export function PDFViewer({
       spans.forEach((span) => {
         span.style.backgroundColor = "";
         span.style.padding = "";
+        span.style.borderRadius = "";
+        span.removeAttribute("data-highlight-id");
       });
 
-      // Clean and prepare search text
-      const searchText = highlightText.toLowerCase().trim().substring(0, 200);
-      const searchWords = searchText
-        .split(/\s+/)
-        .filter((w) => w.length > 3)
-        .slice(0, 8);
+      // Prepare search text - normalize whitespace
+      const searchText = highlightText.toLowerCase().trim();
+      const normalizedSearch = searchText.replace(/\s+/g, " ");
 
-      if (searchWords.length === 0) return;
+      // Collect all text spans and their positions
+      const spanTexts: { span: HTMLElement; text: string; index: number }[] =
+        [];
+      let globalIndex = 0;
 
-      // Find best matching span
-      let bestMatch = { index: -1, score: 0 };
+      spans.forEach((span) => {
+        const text = (span.textContent || "").toLowerCase();
+        spanTexts.push({ span, text, index: globalIndex });
+        globalIndex += text.length;
+      });
 
-      for (let i = 0; i < spans.length; i++) {
-        const spanText = (spans[i].textContent || "").toLowerCase();
-        const matchCount = searchWords.filter((word) =>
-          spanText.includes(word),
-        ).length;
+      // Concatenate all text for searching
+      const fullText = spanTexts.map((s) => s.text).join("");
 
-        if (matchCount > bestMatch.score) {
-          bestMatch = { index: i, score: matchCount };
+      // Helper function to escape regex special characters
+      const escapeRegex = (str: string) => {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      };
+
+      let matchStart = fullText.indexOf(normalizedSearch);
+
+      // Try with flexible whitespace (but safely escape special chars)
+      if (matchStart === -1 && normalizedSearch.length > 10) {
+        try {
+          const searchPart = normalizedSearch.slice(
+            0,
+            Math.min(50, normalizedSearch.length),
+          );
+          const escaped = escapeRegex(searchPart);
+          const flexiblePattern = escaped.replace(/\\ /g, "\\s*");
+          const regex = new RegExp(flexiblePattern);
+          const match = fullText.match(regex);
+          if (match && match.index !== undefined) {
+            matchStart = match.index;
+          }
+        } catch (e) {
+          console.warn("Regex matching failed, trying next strategy");
         }
       }
 
-      // Highlight if we found a good match (at least 2 words)
-      if (bestMatch.score >= 2) {
-        const startIdx = Math.max(0, bestMatch.index - 1);
-        const endIdx = Math.min(spans.length, bestMatch.index + 4);
+      // Try matching key words instead of regex
+      if (matchStart === -1) {
+        const keywords = normalizedSearch
+          .split(/\s+/)
+          .filter((p) => p.length > 3);
+        if (keywords.length > 0) {
+          for (const keyword of keywords) {
+            const pos = fullText.indexOf(keyword);
+            if (pos !== -1) {
+              matchStart = pos;
+              break;
+            }
+          }
+        }
+      }
 
-        for (let j = startIdx; j < endIdx; j++) {
-          spans[j].style.backgroundColor = "rgba(255, 255, 0, 0.5)";
-          spans[j].style.padding = "2px 4px";
-          spans[j].style.borderRadius = "2px";
+      // Try substring matching (match at least 30 characters or half the text)
+      if (matchStart === -1 && normalizedSearch.length >= 30) {
+        const substringLength = Math.max(
+          30,
+          Math.ceil(normalizedSearch.length / 2),
+        );
+        const substring = normalizedSearch.substring(0, substringLength);
+        matchStart = fullText.indexOf(substring);
+      }
+
+      if (matchStart !== -1) {
+        // Find the spans that contain this match
+        let currentPos = 0;
+        let startSpanIdx = -1;
+        let endSpanIdx = -1;
+        let highlightId = `highlight-${Date.now()}`;
+
+        for (let i = 0; i < spanTexts.length; i++) {
+          const spanLength = spanTexts[i].text.length;
+          const spanEnd = currentPos + spanLength;
+
+          // Start span
+          if (
+            startSpanIdx === -1 &&
+            matchStart < spanEnd &&
+            matchStart >= currentPos
+          ) {
+            startSpanIdx = i;
+          }
+
+          // End span (match up to ~250 chars or 8 spans, whichever is smaller)
+          if (
+            startSpanIdx !== -1 &&
+            (spanEnd - matchStart >= 250 || i >= startSpanIdx + 8)
+          ) {
+            endSpanIdx = i;
+            break;
+          }
+
+          currentPos = spanEnd;
         }
 
-        spans[bestMatch.index].scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+        // If we didn't find end, use a reasonable range
+        if (endSpanIdx === -1) {
+          endSpanIdx = Math.min(startSpanIdx + 12, spans.length - 1);
+        }
+
+        // Highlight the found spans
+        if (startSpanIdx !== -1 && endSpanIdx !== -1) {
+          for (let i = startSpanIdx; i <= endSpanIdx; i++) {
+            const span = spanTexts[i].span;
+            span.style.backgroundColor = "rgba(255, 193, 7, 0.7)"; // Golden yellow
+            span.style.padding = "2px 4px";
+            span.style.borderRadius = "3px";
+            span.setAttribute("data-highlight-id", highlightId);
+          }
+
+          // Scroll the first highlighted span into view
+          spanTexts[startSpanIdx].span.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
       }
-    }, 1000);
+    }, 300); // Reduced timeout for faster highlighting
 
     return () => clearTimeout(timer);
   }, [currentPage, highlightText, fileUrl]);

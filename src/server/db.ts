@@ -22,7 +22,9 @@ sqlite.exec(`
     content TEXT NOT NULL,
     page_number INTEGER NOT NULL,
     chunk_index INTEGER NOT NULL,
-    embedding BLOB, -- Stored as JSON string or binary
+    char_start_pos INTEGER DEFAULT 0,
+    char_end_pos INTEGER DEFAULT 0,
+    embedding BLOB,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(document_id) REFERENCES documents(id)
   );
@@ -36,7 +38,7 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL,
-    role TEXT NOT NULL, -- 'user' or 'assistant'
+    role TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(chat_id) REFERENCES chats(id)
@@ -60,9 +62,9 @@ export const db = {
   },
 
   // Chunks
-  createChunk: (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[]) => {
-    const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, embedding) VALUES (?, ?, ?, ?, ?, ?)');
-    stmt.run(id, documentId, content, pageNumber, chunkIndex, JSON.stringify(embedding));
+  createChunk: (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[], charStartPos?: number, charEndPos?: number) => {
+    const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    stmt.run(id, documentId, content, pageNumber, chunkIndex, charStartPos || 0, charEndPos || content.length, JSON.stringify(embedding));
   },
 
   getChunksByDocument: (documentId: string) => {

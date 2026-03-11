@@ -33,14 +33,16 @@ export const ingestionService = {
             
             const chunkId = uuidv4();
             
-            // Store in SQL DB
+            // Store in SQL DB with character positions
             db.createChunk(
               chunkId, 
               documentId, 
               chunk.text, 
               chunk.pageNumber, 
               chunk.chunkIndex, 
-              embedding
+              embedding,
+              chunk.charStartPos,
+              chunk.charEndPos
             );
 
             // Store in Vector DB
@@ -50,7 +52,9 @@ export const ingestionService = {
               metadata: {
                 document_id: documentId,
                 page_number: chunk.pageNumber,
-                text: chunk.text
+                text: chunk.text,
+                char_start_pos: chunk.charStartPos,
+                char_end_pos: chunk.charEndPos
               }
             }]);
         } catch (e) {
@@ -87,8 +91,8 @@ export const ingestionService = {
     return pages;
   },
 
-  chunkPages(pages: { pageNumber: number; text: string }[]): { text: string; pageNumber: number; chunkIndex: number }[] {
-    const chunks: { text: string; pageNumber: number; chunkIndex: number }[] = [];
+  chunkPages(pages: { pageNumber: number; text: string }[]): { text: string; pageNumber: number; chunkIndex: number; charStartPos: number; charEndPos: number }[] {
+    const chunks: { text: string; pageNumber: number; chunkIndex: number; charStartPos: number; charEndPos: number }[] = [];
     const CHUNK_SIZE = 1000; // Characters roughly
     const OVERLAP = 100;
 
@@ -97,7 +101,7 @@ export const ingestionService = {
     for (const page of pages) {
       const text = page.text;
       if (text.length <= CHUNK_SIZE) {
-        chunks.push({ text, pageNumber: page.pageNumber, chunkIndex: globalChunkIndex++ });
+        chunks.push({ text, pageNumber: page.pageNumber, chunkIndex: globalChunkIndex++, charStartPos: 0, charEndPos: text.length });
         continue;
       }
 
@@ -105,7 +109,13 @@ export const ingestionService = {
       while (start < text.length) {
         const end = Math.min(start + CHUNK_SIZE, text.length);
         const chunkText = text.slice(start, end);
-        chunks.push({ text: chunkText, pageNumber: page.pageNumber, chunkIndex: globalChunkIndex++ });
+        chunks.push({ 
+          text: chunkText, 
+          pageNumber: page.pageNumber, 
+          chunkIndex: globalChunkIndex++, 
+          charStartPos: start,
+          charEndPos: end
+        });
         start += (CHUNK_SIZE - OVERLAP);
       }
     }
