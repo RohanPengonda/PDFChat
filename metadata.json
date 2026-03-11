@@ -1,0 +1,5 @@
+{
+  "name": "Gemini RAG PDF Platform",
+  "description": "A production-ready multi-PDF conversational AI platform using Gemini API, supporting RAG, vector search, and PDF highlighting.",
+  "requestFramePermissions": []
+}
