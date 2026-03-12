@@ -13,8 +13,8 @@ export const chatService = {
     // 2. Generate Embedding for Query
     const queryVector = await this.generateEmbedding(message);
 
-    // 3. Retrieve Context
-    const filter = documentIds && documentIds.length > 0 ? { document_ids: documentIds } : undefined;
+    // 3. Retrieve Context with query text for hybrid matching
+    const filter = documentIds && documentIds.length > 0 ? { document_ids: documentIds, query: message } : { query: message };
     const relevantChunks = await vectorStore.query(queryVector, 5, filter);
 
     // 4. Construct Prompt

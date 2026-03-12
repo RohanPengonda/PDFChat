@@ -16,8 +16,7 @@ class LocalVectorStore implements VectorStore {
   }
 
   async query(vector: number[], topK: number, filter?: any): Promise<{ id: string; score: number; metadata: any }[]> {
-    // 1. Fetch all chunks from DB (or filtered by document_id if filter is present)
-    // Optimization: In a real app, use a real vector DB. Here we scan.
+    // 1. Fetch all chunks from DB
     let chunks = db.getAllChunks();
 
     if (filter && filter.document_id) {
@@ -28,9 +27,17 @@ class LocalVectorStore implements VectorStore {
         chunks = chunks.filter((c: any) => filter.document_ids.includes(c.document_id));
     }
 
-    // 2. Compute Cosine Similarity
+    // 2. Hybrid scoring: Combine cosine similarity + keyword matching
     const results = chunks.map((chunk: any) => {
-      const score = this.cosineSimilarity(vector, chunk.embedding);
+      // Cosine similarity score (0-1)
+      const vectorScore = this.cosineSimilarity(vector, chunk.embedding);
+      
+      // Keyword matching score (0-1)
+      const keywordScore = this.keywordMatch(filter?.query || '', chunk.content);
+      
+      // Hybrid score: 40% vector + 60% keyword (keyword weighted more for better accuracy)
+      const hybridScore = (vectorScore * 0.4) + (keywordScore * 0.6);
+      
       let fileName = 'Unknown';
       try {
         const doc = db.getDocument(chunk.document_id) as any;
@@ -43,22 +50,51 @@ class LocalVectorStore implements VectorStore {
       
       return {
         id: chunk.id,
-        score,
+        score: hybridScore,
         metadata: {
           text: chunk.content,
           page_number: chunk.page_number,
           document_id: chunk.document_id,
           chunk_index: chunk.chunk_index,
           file_name: fileName,
-          confidence: Math.round(score * 100)
+          confidence: Math.round(hybridScore * 100),
+          vector_score: Math.round(vectorScore * 100),
+          keyword_score: Math.round(keywordScore * 100)
         }
       };
     });
 
-    // 3. Sort and slice
+    // 3. Sort by hybrid score and return top K
     return results
       .sort((a: any, b: any) => b.score - a.score)
       .slice(0, topK);
+  }
+
+  private keywordMatch(query: string, text: string): number {
+    if (!query || !text) return 0;
+    
+    const queryWords = query.toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 2); // Filter out very short words
+    
+    const textLower = text.toLowerCase();
+    
+    if (queryWords.length === 0) return 0;
+    
+    let matchCount = 0;
+    let totalWeight = 0;
+    
+    queryWords.forEach((word, idx) => {
+      // Give more weight to earlier words in query (they're usually more important)
+      const weight = 1 / (idx + 1);
+      totalWeight += weight;
+      
+      if (textLower.includes(word)) {
+        matchCount += weight;
+      }
+    });
+    
+    return totalWeight > 0 ? matchCount / totalWeight : 0;
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
