@@ -64,9 +64,14 @@ class LocalVectorStore implements VectorStore {
       };
     });
 
-    // 3. Sort by hybrid score and return top K
+    // 3. Sort by hybrid score, require keyword match, filter low-relevance, return top K
     return results
       .sort((a: any, b: any) => b.score - a.score)
+      .filter((r: any) => {
+        const kw = r.metadata.keyword_score;
+        // Must have at least some keyword match AND overall score above threshold
+        return kw > 0 && r.score > 0.15;
+      })
       .slice(0, topK);
   }
 

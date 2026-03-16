@@ -76,49 +76,31 @@ export function PDFViewer({
 
       let matchStart = fullText.indexOf(normalizedSearch);
 
-      // Try with flexible whitespace (but safely escape special chars)
+      // Try with flexible whitespace
       if (matchStart === -1 && normalizedSearch.length > 10) {
         try {
-          const searchPart = normalizedSearch.slice(
-            0,
-            Math.min(50, normalizedSearch.length),
-          );
+          const searchPart = normalizedSearch.slice(0, Math.min(50, normalizedSearch.length));
           const escaped = escapeRegex(searchPart);
           const flexiblePattern = escaped.replace(/\\ /g, "\\s*");
           const regex = new RegExp(flexiblePattern);
           const match = fullText.match(regex);
-          if (match && match.index !== undefined) {
-            matchStart = match.index;
-          }
-        } catch (e) {
-          console.warn("Regex matching failed, trying next strategy");
-        }
+          if (match && match.index !== undefined) matchStart = match.index;
+        } catch (e) {}
       }
 
-      // Try matching key words instead of regex
-      if (matchStart === -1) {
-        const keywords = normalizedSearch
-          .split(/\s+/)
-          .filter((p) => p.length > 3);
-        if (keywords.length > 0) {
-          for (const keyword of keywords) {
-            const pos = fullText.indexOf(keyword);
-            if (pos !== -1) {
-              matchStart = pos;
-              break;
-            }
-          }
-        }
-      }
-
-      // Try substring matching (match at least 30 characters or half the text)
-      if (matchStart === -1 && normalizedSearch.length >= 30) {
-        const substringLength = Math.max(
-          30,
-          Math.ceil(normalizedSearch.length / 2),
-        );
-        const substring = normalizedSearch.substring(0, substringLength);
+      // Try substring match (first 40 chars) - only if text is long enough
+      if (matchStart === -1 && normalizedSearch.length >= 20) {
+        const substring = normalizedSearch.substring(0, Math.min(40, normalizedSearch.length));
         matchStart = fullText.indexOf(substring);
+      }
+
+      // Last resort: match first keyword ONLY if it's specific enough (>5 chars)
+      if (matchStart === -1) {
+        const keywords = normalizedSearch.split(/\s+/).filter(p => p.length > 5);
+        for (const keyword of keywords) {
+          const pos = fullText.indexOf(keyword);
+          if (pos !== -1) { matchStart = pos; break; }
+        }
       }
 
       if (matchStart !== -1) {

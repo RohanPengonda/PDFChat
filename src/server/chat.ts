@@ -95,31 +95,34 @@ ${numberedContext}
     const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     const sortedCitedNumbers = [...citedNumbers].sort((a, b) => a - b);
 
-    const sources = chunksToShow.map((c, idx) => {
-      const doc = db.getDocument(c.metadata.document_id) as any;
-      const chunkText = c.metadata.text;
+    const sources = chunksToShow
+      .map((c, idx) => {
+        const doc = db.getDocument(c.metadata.document_id) as any;
+        const chunkText = c.metadata.text;
 
-      // Find best matching sentence for highlighting and preview
-      const sentences = chunkText.split(/(?<=[.!?])\s+/).filter((s: string) => s.trim().length > 10);
-      let bestSentence = sentences[0] || chunkText;
-      let bestScore = -1;
-      for (const sentence of sentences) {
-        const score = questionWords.filter((w: string) => sentence.toLowerCase().includes(w)).length;
-        if (score > bestScore) { bestScore = score; bestSentence = sentence; }
-      }
-      const trimmed = bestSentence.trim();
+        const sentences = chunkText.split(/(?<=[.!?])\s+/).filter((s: string) => s.trim().length > 10);
+        let bestSentence = sentences[0] || chunkText;
+        let bestScore = 0;
+        for (const sentence of sentences) {
+          const score = questionWords.filter((w: string) => sentence.toLowerCase().includes(w)).length;
+          if (score > bestScore) { bestScore = score; bestSentence = sentence; }
+        }
 
-      return {
-        citation_number: citedNumbers.size > 0 ? sortedCitedNumbers[idx] : idx + 1,
-        file_name: doc?.original_name || 'Unknown',
-        document_id: c.metadata.document_id,
-        page_number: c.metadata.page_number,
-        chunk_id: c.id,
-        text: trimmed,
-        preview: trimmed,
-        confidence: Math.round(c.score * 100)
-      };
-    });
+        // Skip this source entirely if no query words found in the chunk
+        if (bestScore === 0) return null;
+
+        return {
+          citation_number: citedNumbers.size > 0 ? sortedCitedNumbers[idx] : idx + 1,
+          file_name: doc?.original_name || 'Unknown',
+          document_id: c.metadata.document_id,
+          page_number: c.metadata.page_number,
+          chunk_id: c.id,
+          text: bestSentence.trim(),
+          preview: bestSentence.trim(),
+          confidence: Math.round(c.score * 100)
+        };
+      })
+      .filter(Boolean);
     
     res.write(`data: ${JSON.stringify({ sources })}\n\n`);
     res.end();
