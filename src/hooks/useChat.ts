@@ -6,9 +6,9 @@ export interface Source {
   document_id: string;
   page_number: number;
   chunk_id: string;
-  text: string;
+  text: string;        // exact raw text used for PDF highlighting
+  preview?: string;    // display text shown in UI
   confidence?: number;
-  is_primary?: boolean;
   char_start_pos?: number;
   char_end_pos?: number;
   citation_number?: number;

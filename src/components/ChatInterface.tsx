@@ -109,7 +109,7 @@ export function ChatInterface({
                           )}
                         </div>
                         <p className="text-xs text-gray-700 mt-1.5 line-clamp-2 group-hover:line-clamp-none italic">
-                          "{source.text.substring(0, 150)}{source.text.length > 150 ? '...' : ''}"
+                          "{(source.preview || source.text).substring(0, 150)}{(source.preview || source.text).length > 150 ? '...' : ''}"
                         </p>
                         <div className="mt-1.5 text-xs text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                           → Click to highlight in PDF

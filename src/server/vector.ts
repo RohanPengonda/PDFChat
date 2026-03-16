@@ -72,29 +72,28 @@ class LocalVectorStore implements VectorStore {
 
   private keywordMatch(query: string, text: string): number {
     if (!query || !text) return 0;
-    
-    const queryWords = query.toLowerCase()
-      .split(/\s+/)
-      .filter(w => w.length > 2); // Filter out very short words
-    
+
+    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 1);
     const textLower = text.toLowerCase();
-    
+
     if (queryWords.length === 0) return 0;
-    
-    let matchCount = 0;
+
+    let matchScore = 0;
     let totalWeight = 0;
-    
+
     queryWords.forEach((word, idx) => {
-      // Give more weight to earlier words in query (they're usually more important)
       const weight = 1 / (idx + 1);
       totalWeight += weight;
-      
-      if (textLower.includes(word)) {
-        matchCount += weight;
+      // Exact whole-word match scores full weight, partial match scores half
+      const wordBoundaryRegex = new RegExp(`\\b${word}\\b`);
+      if (wordBoundaryRegex.test(textLower)) {
+        matchScore += weight;         // exact word boundary match
+      } else if (textLower.includes(word)) {
+        matchScore += weight * 0.5;   // partial/substring match
       }
     });
-    
-    return totalWeight > 0 ? matchCount / totalWeight : 0;
+
+    return totalWeight > 0 ? matchScore / totalWeight : 0;
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {

@@ -17,26 +17,23 @@ export const chatService = {
     const filter = documentIds && documentIds.length > 0 ? { document_ids: documentIds, query: message } : { query: message };
     const relevantChunks = await vectorStore.query(queryVector, 5, filter);
 
-    // 4. Construct Prompt
-    const contextText = relevantChunks.map(chunk => 
-      `[File: ${chunk.metadata.document_id} | Page: ${chunk.metadata.page_number}] ${chunk.metadata.text}`
+    // 4. Construct Prompt - number directly from array to avoid index mismatch
+    const numberedContext = relevantChunks.map((chunk, idx) =>
+      `[${idx + 1}] [Page: ${chunk.metadata.page_number}]\n${chunk.metadata.text}`
     ).join('\n\n');
 
     const systemInstruction = `You are a helpful document assistant. Answer questions based on the provided context.
 
 IMPORTANT INSTRUCTIONS:
 - Provide clear, direct answers based on the context.
-- Use inline citations [1], [2], [3] etc. to reference sources in order.
+- Use inline citations [1], [2], [3] matching the numbered context blocks below.
 - Place citations immediately after the relevant sentence or fact.
-- If the context contains relevant information, answer it clearly.
+- ONLY cite a source if you actually used information from it.
 - If the context does NOT contain the answer, say "The provided document does not contain information about this topic."
 - Be concise and accurate.
 
-Example format:
-State in React is an object that holds data [1]. It can be updated using setState() [2].
-    
 Context:
-${contextText.split('\n\n').map((chunk, idx) => `[${idx + 1}] ${chunk}`).join('\n\n')}
+${numberedContext}
 `;
 
     // 5. Generate Response (Streaming)
@@ -81,84 +78,46 @@ ${contextText.split('\n\n').map((chunk, idx) => `[${idx + 1}] ${chunk}`).join('\
     // 6. Save Assistant Message
     db.addMessage(chatId, 'assistant', fullResponse);
     
-    // 7. Send Citations with Smart Answer Text Extraction
-    const sources = relevantChunks.map(c => {
+    // 7. Send Citations - only include chunks actually cited in the response
+    // Parse citation numbers used in the response e.g. [1], [2]
+    const citedNumbers = new Set<number>();
+    const citationRegex = /\[(\d+)\]/g;
+    let match;
+    while ((match = citationRegex.exec(fullResponse)) !== null) {
+      citedNumbers.add(parseInt(match[1]));
+    }
+
+    // If no citations found, fall back to all retrieved chunks
+    const chunksToShow = citedNumbers.size > 0
+      ? relevantChunks.filter((_, idx) => citedNumbers.has(idx + 1))
+      : relevantChunks;
+
+    const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const sortedCitedNumbers = [...citedNumbers].sort((a, b) => a - b);
+
+    const sources = chunksToShow.map((c, idx) => {
       const doc = db.getDocument(c.metadata.document_id) as any;
       const chunkText = c.metadata.text;
-      
-      // Strategy 1: Try to find answer text in the chunk by matching response content
-      let excerptText = chunkText;
-      let charStartPos = 0;
-      let charEndPos = chunkText.length;
-      let confidence = 0;
-      
-      // Extract first 2-3 sentences from response as search text
-      const responseSentences = fullResponse.split(/[.!?]+/).filter(s => s.trim().length > 10).slice(0, 3);
-      
-      for (const respSentence of responseSentences) {
-        const keywords = respSentence
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(w => w.length > 4)
-          .slice(0, 3);
-        
-        // Search chunk for these keywords
-        let bestMatch = -1;
-        let matchedCount = 0;
-        
-        for (const keyword of keywords) {
-          const idx = chunkText.toLowerCase().indexOf(keyword);
-          if (idx !== -1) {
-            matchedCount++;
-            if (bestMatch === -1 || idx < bestMatch) bestMatch = idx;
-          }
-        }
-        
-        if (matchedCount > 0) {
-          confidence = matchedCount / keywords.length;
-          if (bestMatch !== -1) {
-            // Find sentence boundaries around match
-            const beforeMatch = chunkText.substring(0, bestMatch).lastIndexOf('.');
-            const afterMatch = chunkText.indexOf('.', bestMatch + 100);
-            
-            charStartPos = beforeMatch !== -1 ? beforeMatch + 1 : 0;
-            charEndPos = afterMatch !== -1 ? afterMatch + 1 : Math.min(bestMatch + 250, chunkText.length);
-            excerptText = chunkText.substring(charStartPos, charEndPos).trim();
-            break;
-          }
-        }
+
+      // Find best matching sentence for highlighting and preview
+      const sentences = chunkText.split(/(?<=[.!?])\s+/).filter((s: string) => s.trim().length > 10);
+      let bestSentence = sentences[0] || chunkText;
+      let bestScore = -1;
+      for (const sentence of sentences) {
+        const score = questionWords.filter((w: string) => sentence.toLowerCase().includes(w)).length;
+        if (score > bestScore) { bestScore = score; bestSentence = sentence; }
       }
-      
-      // Fallback: If no good match found, extract first relevant sentence
-      if (confidence === 0 || excerptText.length < 20) {
-        const sentences = chunkText.split(/[.!?]+/);
-        const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        
-        let bestSentence = sentences[0] || chunkText.substring(0, 150);
-        for (const sentence of sentences) {
-          if (questionWords.some(word => sentence.toLowerCase().includes(word))) {
-            bestSentence = sentence;
-            confidence = 0.5;
-            break;
-          }
-        }
-        excerptText = bestSentence.trim().substring(0, 300);
-      }
-      
-      // Ensure we have valid text
-      if (!excerptText || excerptText.length < 10) {
-        excerptText = chunkText.substring(0, Math.min(200, chunkText.length));
-      }
-      
+      const trimmed = bestSentence.trim();
+
       return {
+        citation_number: citedNumbers.size > 0 ? sortedCitedNumbers[idx] : idx + 1,
         file_name: doc?.original_name || 'Unknown',
         document_id: c.metadata.document_id,
         page_number: c.metadata.page_number,
         chunk_id: c.id,
-        text: excerptText,
-        char_start_pos: charStartPos,
-        char_end_pos: charEndPos,
-        confidence: Math.round(confidence * 100)
+        text: trimmed,
+        preview: trimmed,
+        confidence: Math.round(c.score * 100)
       };
     });
     

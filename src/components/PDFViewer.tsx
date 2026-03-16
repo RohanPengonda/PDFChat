@@ -162,7 +162,7 @@ export function PDFViewer({
         if (startSpanIdx !== -1 && endSpanIdx !== -1) {
           for (let i = startSpanIdx; i <= endSpanIdx; i++) {
             const span = spanTexts[i].span;
-            span.style.backgroundColor = "rgba(255, 193, 7, 0.7)"; // Golden yellow
+            span.style.backgroundColor = "rgba(255, 255, 100, 0.45)"; // Light yellow
             span.style.padding = "2px 4px";
             span.style.borderRadius = "3px";
             span.setAttribute("data-highlight-id", highlightId);
