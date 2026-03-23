@@ -115,15 +115,4 @@ class LocalVectorStore implements VectorStore {
   }
 }
 
-// Placeholder for Pinecone - would use @pinecone-database/pinecone
-class PineconeVectorStore implements VectorStore {
-  async addVectors(vectors: { id: string; values: number[]; metadata: any }[]): Promise<void> {
-    console.log('Pinecone addVectors called - simulated');
-  }
-  async query(vector: number[], topK: number, filter?: any): Promise<{ id: string; score: number; metadata: any }[]> {
-    console.log('Pinecone query called - simulated');
-    return [];
-  }
-}
-
 export const vectorStore = new LocalVectorStore();
