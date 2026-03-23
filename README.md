@@ -1,96 +1,96 @@
-# ChatPDF Q&A (Gemini RAG PDF Platform)
+# ChatPDF Pro
 
-A lightweight local PDF Q&A app that lets you upload one or more PDFs, ask questions, and get answers with citations and PDF text highlighting.
-
-This project uses:
-
-- **Google Gemini (Gemini API)** for generating responses
-- **Local SQLite** for storing documents, chunks, and chat history
-- **A local vector/keyword hybrid search** for retrieving relevant text
-- **Server-side PDF parsing + client-side PDF viewer** for highlighting sources
+Upload your PDFs and ask questions about them. Get answers with exact source citations and highlighted text in the PDF viewer — powered by Google Gemini.
 
 ---
 
-## ✅ Prerequisites
+## What it does
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- A **Google Gemini API Key** (set via `GEMINI_API_KEY`)
+- Upload one or more PDF files
+- Ask questions in a chat interface
+- Get answers with page citations and highlighted text in the PDF
+- Choose between Gemini 2.5 Flash (faster) or Gemini 2.5 Pro (smarter)
 
 ---
 
-## 🚀 Setup & Installation
+## Before you start
 
-1. Clone or download the repository and open it in VS Code.
+You need two things installed on your computer:
 
-2. Install dependencies:
+1. **Node.js v18 or higher** — download from https://nodejs.org
+2. **A Google Gemini API key** — get one free from https://aistudio.google.com/app/apikey
+
+---
+
+## Setup (do this once)
+
+**1. Download the project**
+
+```bash
+git clone <your-repo-url>
+cd ChatPDF_Pro
+```
+
+**2. Install dependencies**
 
 ```bash
 npm install
 ```
 
-3. Create your environment file:
+**3. Add your API key**
 
-- Create a file named `.env` in the project root.
-- Add your Gemini API key:
+Create a file called `.env` in the project root and paste this inside:
 
-```env
-GEMINI_API_KEY=your_actual_api_key_here
+```
+GEMINI_API_KEY=your_api_key_here
 ```
 
-> 🔎 Note: The project stores uploaded PDFs in `uploads/` and the local DB in `database.sqlite`.
+Replace `your_api_key_here` with your actual Gemini API key.
 
 ---
 
-## ▶️ Running the App (Development)
+## Running the app
 
 ```bash
 npm run dev
 ```
 
-Then open:
-
-- http://localhost:3000
+Then open your browser and go to: **http://localhost:3000**
 
 ---
 
-## 🏁 Build + Production
+## How to use it
 
-Build UI assets:
+1. Click **Upload** or drag and drop a PDF into the sidebar
+2. Wait for it to finish processing
+3. Type your question in the chat box and hit send
+4. Click any source citation to jump to and highlight that text in the PDF
+
+---
+
+## Common issues
+
+**"GEMINI_API_KEY is missing"**
+Make sure your `.env` file exists in the project root and has the correct key. Restart the server after creating it.
+
+**No answer / response hangs**
+Your API key may be invalid or out of quota. Check it at https://aistudio.google.com
+
+**PDF not displaying**
+Use a modern browser — Chrome, Edge, or Firefox.
+
+---
+
+## For production deployment
+
+Build the frontend:
 
 ```bash
 npm run build
 ```
 
-Start the server (serves the built UI + API):
+Start the server:
 
 ```bash
 npm run start
 ```
-
----
-
-## ✨ Key Features
-
-- **Multi-PDF Upload** (drag/drop or file picker)
-- **Chat interface** with streaming responses
-- **Model selector** (Gemini 2.5 Flash / Pro)
-- **Citations** (file name + page number)
-- **Click-to-highlight** in the PDF viewer
-- **Persistent storage** via SQLite
-
----
-
-## 🛠 Troubleshooting
-
-- **"GEMINI_API_KEY is missing"**: Confirm `.env` exists and contains the key, then restart the server.
-- **No responses / stream hangs**: Ensure your Gemini API key is valid and has enough quota.
-- **PDF rendering issues**: Use a modern browser (Chrome/Edge/Firefox).
-
----
-
-## 🗑️ Cleaning Up
-
-- Clear all documents (from UI): use **Clear All** in the sidebar.
-- Manually delete stored data (if needed):
-  - `database.sqlite`
-  - `uploads/` directory
