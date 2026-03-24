@@ -4,27 +4,41 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { clsx } from "clsx";
 
-// Set worker to match pdfjs-dist version
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PDFViewerProps {
   fileUrl: string | null;
   pageNumber?: number;
   highlightText?: string;
+  isDark?: boolean;
 }
 
 export function PDFViewer({
   fileUrl,
   pageNumber = 1,
   highlightText,
+  isDark = true,
 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(pageNumber);
+  const [containerWidth, setContainerWidth] = useState<number>(600);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Measure outer container width responsively
   useEffect(() => {
-    setCurrentPage(pageNumber);
-  }, [pageNumber]);
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setContainerWidth(Math.floor(w - 48));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => { setCurrentPage(pageNumber); }, [pageNumber]);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -162,53 +176,74 @@ export function PDFViewer({
     return () => clearTimeout(timer);
   }, [currentPage, highlightText, fileUrl]);
 
-  return (
-    <div
-      className="flex flex-col items-center bg-gray-100 h-full overflow-auto p-4"
-      ref={containerRef}
-    >
-      {fileUrl ? (
-        <Document
-          file={fileUrl}
-          onLoadSuccess={onDocumentLoadSuccess}
-          className="shadow-lg"
-          loading={<div className="p-10">Loading PDF...</div>}
-        >
-          <Page
-            pageNumber={currentPage}
-            renderTextLayer={true}
-            renderAnnotationLayer={false}
-            width={600}
-            className="bg-white"
-          />
-        </Document>
-      ) : (
-        <div className="flex items-center justify-center h-full text-gray-500">
-          Select a document to view
-        </div>
-      )}
+  const bg = isDark ? "bg-[#12141f]" : "bg-[#e8eaf0]";
+  const cardBg = isDark ? "bg-[#1a1d2e]" : "bg-white";
+  const border = isDark ? "border-[#2a2d3e]" : "border-gray-200";
+  const textMain = isDark ? "text-white" : "text-gray-800";
+  const textSub = isDark ? "text-gray-500" : "text-gray-400";
+  const pageBg = isDark ? "bg-[#1a1d2e] border-[#2a2d3e]" : "bg-white border-gray-200";
+  const pageBtn = isDark ? "text-gray-400 hover:text-white disabled:opacity-20" : "text-gray-500 hover:text-gray-900 disabled:opacity-30";
 
-      {fileUrl && (
-        <div className="mt-4 flex gap-4 items-center bg-white p-2 rounded shadow sticky bottom-4">
-          <button
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((prev) => prev - 1)}
-            className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+  return (
+    <div ref={containerRef} className={clsx("flex flex-col items-center h-full overflow-auto p-6", bg)}>
+      <div className="w-full flex flex-col items-center">
+      {fileUrl ? (
+        <>
+          <Document
+            file={fileUrl}
+            onLoadSuccess={onDocumentLoadSuccess}
+            className="shadow-2xl shadow-black/40 rounded-lg overflow-hidden w-full"
+            loading={
+              <div className={clsx("flex items-center gap-2 mt-20 text-sm", textSub)}>
+                <div className="w-4 h-4 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
+                Loading PDF…
+              </div>
+            }
           >
-            Prev
-          </button>
-          <span>
-            Page {currentPage} of {numPages}
-          </span>
-          <button
-            disabled={currentPage >= numPages}
-            onClick={() => setCurrentPage((prev) => prev + 1)}
-            className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
-          >
-            Next
-          </button>
+            <Page
+              pageNumber={currentPage}
+              renderTextLayer={true}
+              renderAnnotationLayer={false}
+              width={Math.min(containerWidth, 900)}
+            />
+          </Document>
+
+          <div className={clsx("mt-5 flex items-center gap-1 border rounded-2xl px-2 py-1.5 sticky bottom-4 shadow-xl", pageBg, border)}>
+            <button
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+              className={clsx("px-3 py-1 text-xs font-medium rounded-xl transition-colors", pageBtn)}
+            >← Prev</button>
+            <span className={clsx("text-xs px-3 border-x", border, textSub)}>{currentPage} / {numPages}</span>
+            <button
+              disabled={currentPage >= numPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              className={clsx("px-3 py-1 text-xs font-medium rounded-xl transition-colors", pageBtn)}
+            >Next →</button>
+          </div>
+        </>
+      ) : (
+        <div className={clsx("w-full h-[85vh] rounded-2xl border flex flex-col items-center justify-center gap-5 text-center", cardBg, border)}>
+          <div className="relative w-32 h-32 opacity-60">
+            <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              <rect x="15" y="20" width="55" height="72" rx="4" fill="#2a3a5c" stroke="#3a5080" strokeWidth="1.5"/>
+              <rect x="22" y="14" width="55" height="72" rx="4" fill="#1e2d4a" stroke="#3a5080" strokeWidth="1.5"/>
+              <rect x="29" y="8" width="55" height="72" rx="4" fill="#162238" stroke="#2a4060" strokeWidth="1.5"/>
+              <line x1="38" y1="28" x2="74" y2="28" stroke="#3a5080" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="38" y1="36" x2="74" y2="36" stroke="#3a5080" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="38" y1="44" x2="60" y2="44" stroke="#3a5080" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="82" cy="72" r="18" fill="#1a2a45" stroke="#2a4060" strokeWidth="1.5"/>
+              <circle cx="82" cy="72" r="10" fill="none" stroke="#3a6090" strokeWidth="2"/>
+              <line x1="92" y1="82" x2="100" y2="90" stroke="#4a70a0" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <p className={clsx("text-sm font-bold uppercase tracking-widest", textMain)}>Select a document to start.</p>
+            <p className={clsx("text-xs mt-1.5 max-w-xs", textSub)}>Integrated, intelligent chat and analysis across multiple files.</p>
+          </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
