@@ -38,29 +38,30 @@ ${numberedContext}
 
     // 5. Generate Response (Streaming)
     const selectedModel = model || "gemini-2.5-flash";
-    
-    // Retry logic for 503 errors
+
+    // Retry logic for 503/429 errors
     let retries = 3;
     let result;
-    
+
     while (retries > 0) {
       try {
         result = await ai.models.generateContentStream({
           model: selectedModel,
           contents: [{ role: "user", parts: [{ text: message }] }],
-          config: {
-            systemInstruction: systemInstruction
-          }
+          config: { systemInstruction },
         });
-        break; // Success, exit retry loop
+        break;
       } catch (error: any) {
-        if (error.status === 503 && retries > 1) {
+        if ((error.status === 503 || error.status === 429) && retries > 1) {
           retries--;
-          const delay = (4 - retries) * 2000; // 2s, 4s, 6s
-          console.log(`Model ${selectedModel} unavailable, retrying in ${delay/1000}s... (${retries} attempts left)`);
+          const delay = (4 - retries) * 3000;
+          console.log(`Model ${selectedModel} unavailable (${error.status}), retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          throw error; // Give up or different error
+          const msg = error?.message || 'Model error';
+          res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+          res.end();
+          return;
         }
       }
     }

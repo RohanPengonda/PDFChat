@@ -105,7 +105,7 @@ export default function App() {
               className={clsx("flex-1 bg-transparent text-sm font-medium outline-none cursor-pointer", text)}
             >
               <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+              <option value="gemini-2.5-pro-preview-06-05">Gemini 2.5 Pro</option>
             </select>
           </div>
         </div>
@@ -163,13 +163,16 @@ export default function App() {
       </div>
 
       {/* Bottom */}
-      <div className={clsx("px-5 py-4 border-t flex items-center justify-between", border)}>
+      {/* <div className={clsx("px-5 py-4 border-t flex items-center justify-between", border)}>
         <button className={clsx("p-1.5 rounded-lg transition-colors", subtext, "hover:text-white")}>
           <Settings className="w-4 h-4" />
         </button>
         <div className={clsx("text-[10px] font-medium", subtext)}>v1.0</div>
       </div>
-    </div>
+    */}
+    
+    </div> 
+
   );
 
   return (
