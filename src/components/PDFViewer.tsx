@@ -38,7 +38,9 @@ export function PDFViewer({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => { setCurrentPage(pageNumber); }, [pageNumber]);
+  useEffect(() => {
+    setCurrentPage(pageNumber);
+  }, [pageNumber]);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -93,7 +95,10 @@ export function PDFViewer({
       // Try with flexible whitespace
       if (matchStart === -1 && normalizedSearch.length > 10) {
         try {
-          const searchPart = normalizedSearch.slice(0, Math.min(50, normalizedSearch.length));
+          const searchPart = normalizedSearch.slice(
+            0,
+            Math.min(50, normalizedSearch.length),
+          );
           const escaped = escapeRegex(searchPart);
           const flexiblePattern = escaped.replace(/\\ /g, "\\s*");
           const regex = new RegExp(flexiblePattern);
@@ -104,16 +109,24 @@ export function PDFViewer({
 
       // Try substring match (first 40 chars) - only if text is long enough
       if (matchStart === -1 && normalizedSearch.length >= 20) {
-        const substring = normalizedSearch.substring(0, Math.min(40, normalizedSearch.length));
+        const substring = normalizedSearch.substring(
+          0,
+          Math.min(40, normalizedSearch.length),
+        );
         matchStart = fullText.indexOf(substring);
       }
 
       // Last resort: match first keyword ONLY if it's specific enough (>5 chars)
       if (matchStart === -1) {
-        const keywords = normalizedSearch.split(/\s+/).filter(p => p.length > 5);
+        const keywords = normalizedSearch
+          .split(/\s+/)
+          .filter((p) => p.length > 5);
         for (const keyword of keywords) {
           const pos = fullText.indexOf(keyword);
-          if (pos !== -1) { matchStart = pos; break; }
+          if (pos !== -1) {
+            matchStart = pos;
+            break;
+          }
         }
       }
 
@@ -181,69 +194,192 @@ export function PDFViewer({
   const border = isDark ? "border-[#2a2d3e]" : "border-gray-200";
   const textMain = isDark ? "text-white" : "text-gray-800";
   const textSub = isDark ? "text-gray-500" : "text-gray-400";
-  const pageBg = isDark ? "bg-[#1a1d2e] border-[#2a2d3e]" : "bg-white border-gray-200";
-  const pageBtn = isDark ? "text-gray-400 hover:text-white disabled:opacity-20" : "text-gray-500 hover:text-gray-900 disabled:opacity-30";
+  const pageBg = isDark
+    ? "bg-[#1a1d2e] border-[#2a2d3e]"
+    : "bg-white border-gray-200";
+  const pageBtn = isDark
+    ? "text-gray-400 hover:text-white disabled:opacity-20"
+    : "text-gray-500 hover:text-gray-900 disabled:opacity-30";
 
   return (
-    <div ref={containerRef} className={clsx("flex flex-col items-center h-full overflow-auto p-6", bg)}>
-      <div className="w-full flex flex-col items-center">
-      {fileUrl ? (
-        <>
-          <Document
-            file={fileUrl}
-            onLoadSuccess={onDocumentLoadSuccess}
-            className="shadow-2xl shadow-black/40 rounded-lg overflow-hidden w-full"
-            loading={
-              <div className={clsx("flex items-center gap-2 mt-20 text-sm", textSub)}>
-                <div className="w-4 h-4 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
-                Loading PDF…
-              </div>
-            }
+    <div ref={containerRef} className={clsx("flex flex-col h-full", bg)}>
+      <div className="flex-1 overflow-auto p-6 flex flex-col items-center">
+        {fileUrl ? (
+          <>
+            <Document
+              file={fileUrl}
+              onLoadSuccess={onDocumentLoadSuccess}
+              className="shadow-2xl shadow-black/40 rounded-lg"
+              loading={
+                <div
+                  className={clsx(
+                    "flex items-center gap-2 mt-20 text-sm",
+                    textSub,
+                  )}
+                >
+                  <div className="w-4 h-4 border-2 border-gray-600 border-t-blue-400 rounded-full animate-spin" />
+                  Loading PDF…
+                </div>
+              }
+            >
+              <Page
+                pageNumber={currentPage}
+                renderTextLayer={true}
+                renderAnnotationLayer={false}
+                width={Math.min(containerWidth, 900)}
+                className="rounded-lg overflow-hidden"
+              />
+            </Document>
+          </>
+        ) : (
+          <div
+            className={clsx(
+              "w-full h-[85vh] rounded-2xl border flex flex-col items-center justify-center gap-5 text-center",
+              cardBg,
+              border,
+            )}
           >
-            <Page
-              pageNumber={currentPage}
-              renderTextLayer={true}
-              renderAnnotationLayer={false}
-              width={Math.min(containerWidth, 900)}
-            />
-          </Document>
+            <div className="relative w-32 h-32 opacity-60">
+              <svg
+                viewBox="0 0 120 120"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-full h-full"
+              >
+                <rect
+                  x="15"
+                  y="20"
+                  width="55"
+                  height="72"
+                  rx="4"
+                  fill="#2a3a5c"
+                  stroke="#3a5080"
+                  strokeWidth="1.5"
+                />
+                <rect
+                  x="22"
+                  y="14"
+                  width="55"
+                  height="72"
+                  rx="4"
+                  fill="#1e2d4a"
+                  stroke="#3a5080"
+                  strokeWidth="1.5"
+                />
+                <rect
+                  x="29"
+                  y="8"
+                  width="55"
+                  height="72"
+                  rx="4"
+                  fill="#162238"
+                  stroke="#2a4060"
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1="38"
+                  y1="28"
+                  x2="74"
+                  y2="28"
+                  stroke="#3a5080"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="38"
+                  y1="36"
+                  x2="74"
+                  y2="36"
+                  stroke="#3a5080"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="38"
+                  y1="44"
+                  x2="60"
+                  y2="44"
+                  stroke="#3a5080"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx="82"
+                  cy="72"
+                  r="18"
+                  fill="#1a2a45"
+                  stroke="#2a4060"
+                  strokeWidth="1.5"
+                />
+                <circle
+                  cx="82"
+                  cy="72"
+                  r="10"
+                  fill="none"
+                  stroke="#3a6090"
+                  strokeWidth="2"
+                />
+                <line
+                  x1="92"
+                  y1="82"
+                  x2="100"
+                  y2="90"
+                  stroke="#4a70a0"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+            <div>
+              <p
+                className={clsx(
+                  "text-sm font-bold uppercase tracking-widest",
+                  textMain,
+                )}
+              >
+                Select a document to start.
+              </p>
+              <p className={clsx("text-xs mt-1.5 max-w-xs", textSub)}>
+                Integrated, intelligent chat and analysis across multiple files.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
-          <div className={clsx("mt-5 flex items-center gap-1 border rounded-2xl px-2 py-1.5 sticky bottom-4 shadow-xl", pageBg, border)}>
-            <button
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-              className={clsx("px-3 py-1 text-xs font-medium rounded-xl transition-colors", pageBtn)}
-            >← Prev</button>
-            <span className={clsx("text-xs px-3 border-x", border, textSub)}>{currentPage} / {numPages}</span>
-            <button
-              disabled={currentPage >= numPages}
-              onClick={() => setCurrentPage((p) => p + 1)}
-              className={clsx("px-3 py-1 text-xs font-medium rounded-xl transition-colors", pageBtn)}
-            >Next →</button>
-          </div>
-        </>
-      ) : (
-        <div className={clsx("w-full h-[85vh] rounded-2xl border flex flex-col items-center justify-center gap-5 text-center", cardBg, border)}>
-          <div className="relative w-32 h-32 opacity-60">
-            <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-              <rect x="15" y="20" width="55" height="72" rx="4" fill="#2a3a5c" stroke="#3a5080" strokeWidth="1.5"/>
-              <rect x="22" y="14" width="55" height="72" rx="4" fill="#1e2d4a" stroke="#3a5080" strokeWidth="1.5"/>
-              <rect x="29" y="8" width="55" height="72" rx="4" fill="#162238" stroke="#2a4060" strokeWidth="1.5"/>
-              <line x1="38" y1="28" x2="74" y2="28" stroke="#3a5080" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="38" y1="36" x2="74" y2="36" stroke="#3a5080" strokeWidth="1.5" strokeLinecap="round"/>
-              <line x1="38" y1="44" x2="60" y2="44" stroke="#3a5080" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="82" cy="72" r="18" fill="#1a2a45" stroke="#2a4060" strokeWidth="1.5"/>
-              <circle cx="82" cy="72" r="10" fill="none" stroke="#3a6090" strokeWidth="2"/>
-              <line x1="92" y1="82" x2="100" y2="90" stroke="#4a70a0" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div>
-            <p className={clsx("text-sm font-bold uppercase tracking-widest", textMain)}>Select a document to start.</p>
-            <p className={clsx("text-xs mt-1.5 max-w-xs", textSub)}>Integrated, intelligent chat and analysis across multiple files.</p>
-          </div>
+      {fileUrl && numPages > 0 && (
+        <div
+          className={clsx(
+            "flex items-center justify-center gap-1 border-t px-4 py-2 shrink-0",
+            pageBg,
+            border,
+          )}
+        >
+          <button
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage((p) => p - 1)}
+            className={clsx(
+              "px-3 py-1 text-xs font-medium rounded-xl transition-colors",
+              pageBtn,
+            )}
+          >
+            ← Prev
+          </button>
+          <span className={clsx("text-xs px-3 border-x", border, textSub)}>
+            {currentPage} / {numPages}
+          </span>
+          <button
+            disabled={currentPage >= numPages}
+            onClick={() => setCurrentPage((p) => p + 1)}
+            className={clsx(
+              "px-3 py-1 text-xs font-medium rounded-xl transition-colors",
+              pageBtn,
+            )}
+          >
+            Next →
+          </button>
         </div>
       )}
-      </div>
     </div>
   );
 }
