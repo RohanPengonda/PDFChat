@@ -1,96 +1,79 @@
-# ChatPDF Pro
+# ChatPDF Q&A
 
-Upload your PDFs and ask questions about them. Get answers with exact source citations and highlighted text in the PDF viewer — powered by Google Gemini.
-
----
-
-## What it does
-
-- Upload one or more PDF files
-- Ask questions in a chat interface
-- Get answers with page citations and highlighted text in the PDF
-- Choose between Gemini 2.5 Flash (faster) or Gemini 2.5 Pro (smarter)
+This app lets you upload a PDF file and ask questions about it. The app reads your PDF and gives you answers!
 
 ---
 
-## Before you start
+## What you need before starting
 
-You need two things installed on your computer:
+You need to install 2 things on your computer:
 
-1. **Node.js v18 or higher** — download from https://nodejs.org
-2. **A Google Gemini API key** — get one free from https://aistudio.google.com/app/apikey
+**1. Node.js** — This runs the app.
+Download it here: https://nodejs.org
+(Pick the one that says "LTS")
+
+**2. A Gemini API Key** — This is like a password that lets the app use Google's AI.
+Get it free here: https://aistudio.google.com/app/apikey
+(Sign in with your Google account and click "Create API Key")
 
 ---
 
-## Setup (do this once)
+## How to set it up (only do this once)
 
-**1. Download the project**
+**Step 1 — Download the project**
 
-```bash
-git clone <your-repo-url>
-cd ChatPDF_Pro
+```
+git clone https://github.com/RohanPengonda/PDFChat
+cd PDFChat
 ```
 
-**2. Install dependencies**
+**Step 2 — Install everything**
 
-```bash
+```
 npm install
 ```
 
-**3. Add your API key**
+**Step 3 — Add your API key**
 
-Create a file called `.env` in the project root and paste this inside:
+Create a new file called `.env` in the project folder.
+Open it and paste this inside:
 
 ```
-GEMINI_API_KEY=your_api_key_here
+GEMINI_API_KEY=paste_your_key_here
 ```
 
-Replace `your_api_key_here` with your actual Gemini API key.
+Replace `paste_your_key_here` with the key you got from Google.
 
 ---
 
-## Running the app
+## How to start the app
 
-```bash
+```
 npm run dev
 ```
 
-Then open your browser and go to: **http://localhost:3000**
+Then open your browser and go to:
+**http://localhost:3000**
 
 ---
 
 ## How to use it
 
-1. Click **Upload** or drag and drop a PDF into the sidebar
-2. Wait for it to finish processing
-3. Type your question in the chat box and hit send
-4. Click any source citation to jump to and highlight that text in the PDF
+1. Click **Add Document** and pick a PDF from your computer
+2. Wait a few seconds for it to load
+3. Type your question in the box at the bottom right
+4. The app will answer and show you exactly where in the PDF it found the answer
+5. Click on a source to jump to that page in the PDF
 
 ---
 
-## Common issues
+## Something not working?
 
 **"GEMINI_API_KEY is missing"**
-Make sure your `.env` file exists in the project root and has the correct key. Restart the server after creating it.
+→ Make sure you created the `.env` file and added your key. Then stop and restart the app.
 
-**No answer / response hangs**
-Your API key may be invalid or out of quota. Check it at https://aistudio.google.com
+**App is not answering**
+→ Your API key might be wrong. Double check it at https://aistudio.google.com
 
-**PDF not displaying**
-Use a modern browser — Chrome, Edge, or Firefox.
-
----
-
-## For production deployment
-
-Build the frontend:
-
-```bash
-npm run build
-```
-
-Start the server:
-
-```bash
-npm run start
-```
+**PDF not showing**
+→ Use Chrome, Edge, or Firefox. Very old browsers may not work.
