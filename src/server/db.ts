@@ -85,6 +85,11 @@ export const db = {
     return id;
   },
 
+  // Update chat title
+  updateChatTitle: (id: string, title: string) => {
+    sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(title, id);
+  },
+
   // Messages
   addMessage: (chatId: string, role: 'user' | 'assistant', content: string) => {
     const id = uuidv4();

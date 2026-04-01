@@ -166,6 +166,18 @@ async function startServer() {
     }
   });
 
+  // 9. Update chat title
+  app.patch('/api/chats/:id/title', async (req, res) => {
+    try {
+      const { title } = req.body;
+      if (!title) return res.status(400).json({ error: 'Title required' });
+      db.updateChatTitle(req.params.id, title);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update title' });
+    }
+  });
+
   // Vite middleware for development
   const vite = await createViteServer({
     server: { middlewareMode: true },

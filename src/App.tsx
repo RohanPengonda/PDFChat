@@ -352,6 +352,7 @@ export default function App() {
               onSourceClick={handleSourceClick}
               isDark={isDark}
               onToggleTheme={() => setIsDark(!isDark)}
+              chatId={chatId}
             />
           </div>
         </div>
@@ -415,6 +416,7 @@ export default function App() {
                   onSourceClick={handleSourceClick}
                   isDark={isDark}
                   onToggleTheme={() => setIsDark(!isDark)}
+                  chatId={chatId}
                 />
               </div>
             )}
@@ -490,6 +492,7 @@ export default function App() {
               onSourceClick={handleSourceClick}
               isDark={isDark}
               onToggleTheme={() => setIsDark(!isDark)}
+              chatId={chatId}
             />
           </div>
         </div>

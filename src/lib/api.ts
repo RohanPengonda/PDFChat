@@ -38,5 +38,15 @@ export const api = {
     const res = await fetch('/api/documents', { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to clear documents');
     return res.json();
+  },
+
+  async updateChatTitle(chatId: string, title: string) {
+    const res = await fetch(`/api/chats/${chatId}/title`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (!res.ok) throw new Error('Failed to update chat title');
+    return res.json();
   }
 };
