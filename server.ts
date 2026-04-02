@@ -178,6 +178,17 @@ async function startServer() {
     }
   });
 
+  // 10. Generate document summary
+  app.post('/api/documents/:id/summary', async (req, res) => {
+    try {
+      const summary = await chatService.generateSummary(req.params.id);
+      res.json({ summary });
+    } catch (error) {
+      console.error('Summary error:', error);
+      res.status(500).json({ error: 'Failed to generate summary' });
+    }
+  });
+
   // Vite middleware for development
   const vite = await createViteServer({
     server: { middlewareMode: true },

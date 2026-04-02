@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { UploadZone } from "./components/UploadZone";
 import { PDFViewer } from "./components/PDFViewer";
 import { ChatInterface } from "./components/ChatInterface";
+import { SummaryModal } from "./components/SummaryModal";
 import { useChat, Source } from "./hooks/useChat";
 import { api } from "./lib/api";
 import {
@@ -11,6 +12,8 @@ import {
   Menu,
   FileSearch,
   MessageSquare,
+  Loader2,
+  ClipboardList,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -46,11 +49,36 @@ export default function App() {
   const { messages, isLoading, streamingContent, sendMessage } =
     useChat(chatId);
 
-  const handleUploadComplete = (doc: any) => {
+  const [summary, setSummary] = useState<{ docName: string; content: string } | null>(null);
+
+  const handleUploadComplete = async (doc: any) => {
     setDocuments((prev) => [doc, ...prev]);
     setSelectedDocId(doc.id);
     setMobileTab("pdf");
     setSidebarOpen(false);
+    // Auto-show summary after upload
+    try {
+      const content = await api.getDocumentSummary(doc.id);
+      setSummary({ docName: doc.original_name || doc.filename, content });
+    } catch (e) {
+      console.error('Summary failed:', e);
+    }
+  };
+
+  const [summaryLoadingId, setSummaryLoadingId] = useState<string | null>(null);
+
+  const handleSummaryClick = async (doc: Document, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSummaryLoadingId(doc.id);
+    setSidebarOpen(false);
+    try {
+      const content = await api.getDocumentSummary(doc.id);
+      setSummary({ docName: doc.original_name, content });
+    } catch {
+      setSummary({ docName: doc.original_name, content: 'Failed to generate summary. Please try again.' });
+    } finally {
+      setSummaryLoadingId(null);
+    }
   };
 
   const handleSourceClick = (source: Source) => {
@@ -209,7 +237,7 @@ export default function App() {
                       setSidebarOpen(false);
                     }}
                     className={clsx(
-                      "w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-center gap-2.5 transition-all",
+                      "w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-center gap-2.5 transition-all pr-16",
                       selectedDocId === doc.id ? docSelected : docItem,
                     )}
                   >
@@ -218,9 +246,25 @@ export default function App() {
                       {doc.original_name}
                     </span>
                   </button>
+                  {/* Summary button */}
+                  <button
+                    onClick={(e) => handleSummaryClick(doc, e)}
+                    disabled={summaryLoadingId === doc.id}
+                    className={clsx(
+                      "absolute right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded-md transition-all",
+                      isDark ? "text-blue-400 hover:bg-blue-500/10" : "text-blue-500 hover:bg-blue-50"
+                    )}
+                    title="Show summary"
+                  >
+                    {summaryLoadingId === doc.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <ClipboardList className="w-3.5 h-3.5" />}
+                  </button>
+                  {/* Delete button */}
                   <button
                     onClick={() => handleDeleteDoc(doc.id)}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 p-0.5 transition-all"
+                    title="Delete"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -244,6 +288,16 @@ export default function App() {
 
   return (
     <div className={clsx("flex h-screen overflow-hidden font-sans", bg)}>
+
+      {/* Summary Modal */}
+      {summary && (
+        <SummaryModal
+          docName={summary.docName}
+          content={summary.content}
+          isDark={isDark}
+          onClose={() => setSummary(null)}
+        />
+      )}
       {/* ── DESKTOP: Fixed left sidebar (lg+) ── */}
       <div
         className={clsx(

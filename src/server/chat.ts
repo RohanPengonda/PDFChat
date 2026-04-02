@@ -129,6 +129,56 @@ ${numberedContext}
     res.end();
   },
 
+  async generateSummary(documentId: string): Promise<string> {
+    const allChunks = db.getAllChunks().filter((c: any) => c.document_id === documentId);
+    if (allChunks.length === 0) return 'No content found in this document.';
+    const sampleChunks = allChunks.slice(0, 6).map((c: any) => c.content).join('\n\n');
+
+    const prompt = `You are a document analyst. Based on the following text from a document, provide a concise structured summary.
+
+Format your response exactly like this:
+**📄 What this document is about:**
+(1-2 sentences)
+
+**🔑 Key Topics:**
+- topic 1
+- topic 2
+- topic 3
+
+**💡 Main Points:**
+- point 1
+- point 2
+- point 3
+
+Document text:
+${sampleChunks}`;
+
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
+        // @google/genai returns text via result.text property
+        const text = result.text;
+        if (text) return text;
+        // fallback: dig into candidates
+        const candidate = (result as any)?.candidates?.[0];
+        return candidate?.content?.parts?.[0]?.text || 'Could not generate summary.';
+      } catch (error: any) {
+        if ((error.status === 503 || error.status === 429) && retries > 1) {
+          retries--;
+          await new Promise(r => setTimeout(r, 3000));
+        } else {
+          console.error('Summary generation error:', error?.message || error);
+          throw error;
+        }
+      }
+    }
+    return 'Could not generate summary.';
+  },
+
   async generateEmbedding(text: string): Promise<number[]> {
     const embedding = new Array(768).fill(0);
     const words = text.toLowerCase().split(/\s+/).slice(0, 100);

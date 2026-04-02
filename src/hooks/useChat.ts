@@ -19,6 +19,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
+  isSummary?: boolean;
 }
 
 export function useChat(chatId: string | null) {
@@ -26,6 +27,20 @@ export function useChat(chatId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [streamSources, setStreamSources] = useState<Source[]>([]);
+
+  const injectSummary = useCallback((docName: string, summary: string) => {
+    const summaryMsg: Message = {
+      id: `summary-${Date.now()}`,
+      role: 'assistant',
+      content: `**📋 Document Summary: ${docName}**\n\n${summary}`,
+      isSummary: true,
+    };
+    setMessages(prev => {
+      // Replace existing summary if present, otherwise prepend
+      const filtered = prev.filter(m => !m.isSummary);
+      return [summaryMsg, ...filtered];
+    });
+  }, []);
 
   useEffect(() => {
     if (chatId) {
@@ -123,5 +138,5 @@ export function useChat(chatId: string | null) {
     }
   }, [chatId]);
 
-  return { messages, isLoading, streamingContent, streamSources, sendMessage };
+  return { messages, isLoading, streamingContent, streamSources, sendMessage, injectSummary };
 }

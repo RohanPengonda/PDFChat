@@ -48,5 +48,12 @@ export const api = {
     });
     if (!res.ok) throw new Error('Failed to update chat title');
     return res.json();
+  },
+
+  async getDocumentSummary(documentId: string): Promise<string> {
+    const res = await fetch(`/api/documents/${documentId}/summary`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to get summary');
+    const data = await res.json();
+    return data.summary;
   }
 };
