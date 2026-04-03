@@ -1,79 +1,121 @@
 # ChatPDF Q&A
 
-This app lets you upload a PDF file and ask questions about it. The app reads your PDF and gives you answers!
+Upload your PDF files and ask questions about them. The app reads your PDFs and gives you answers with exact page references!
 
 ---
 
 ## What you need before starting
 
-You need to install 2 things on your computer:
+You need 2 things on your computer:
 
 **1. Node.js** — This runs the app.
 Download it here: https://nodejs.org
 (Pick the one that says "LTS")
 
-**2. A Gemini API Key** — This is like a password that lets the app use Google's AI.
-Get it free here: https://aistudio.google.com/app/apikey
-(Sign in with your Google account and click "Create API Key")
+**2. A Gemini API Key** — This lets the app use Google's AI for free.
+Get it here: https://aistudio.google.com/app/apikey
+(Sign in with Google → click "Create API Key")
 
 ---
 
-## How to set it up (only do this once)
+## Setup (do this once)
 
 **Step 1 — Download the project**
-
 ```
 git clone https://github.com/RohanPengonda/PDFChat
 cd PDFChat
 ```
 
 **Step 2 — Install everything**
-
 ```
 npm install
 ```
 
 **Step 3 — Add your API key**
 
-Create a new file called `.env` in the project folder.
-Open it and paste this inside:
-
+Create a file called `.env` in the project folder and paste this inside:
 ```
 GEMINI_API_KEY=paste_your_key_here
 ```
 
-Replace `paste_your_key_here` with the key you got from Google.
-
 ---
 
-## How to start the app
+## Start the app
 
 ```
 npm run dev
 ```
 
-Then open your browser and go to:
-**http://localhost:3000**
+Open your browser and go to: **http://localhost:3000**
 
 ---
 
-## How to use it
+## What you can do
 
-1. Click **Add Document** and pick a PDF from your computer
-2. Wait a few seconds for it to load
-3. Type your question in the box at the bottom right
-4. The app will answer and show you exactly where in the PDF it found the answer
-5. Click on a source to jump to that page in the PDF
+**Upload PDFs**
+- Click **Add Document** in the left sidebar
+- Drag and drop a PDF file, or click to pick one
+- You can upload multiple PDFs
+
+**Ask questions**
+- Type your question in the chat box on the right
+- The app answers and shows exactly which page it found the answer on
+- Click any source card to jump to that page in the PDF
+
+**Document Summary**
+- After uploading, a summary automatically pops up showing what the document is about
+- You can also click the 📋 icon next to any document name to see its summary anytime
+- The summary shows key topics and main points
+- Click **Copy** to copy the summary text
+
+**PDF Viewer**
+- Use **← Prev** and **Next →** buttons to flip pages
+- Use **−** and **+** buttons to zoom in and out
+- Click **Reset** to go back to normal zoom
+
+**Choose AI Model**
+- **Gemini 2.5 Flash** — faster answers
+- **Gemini 2.5 Pro** — smarter answers
+
+**Dark / Light Theme**
+- Click the moon or sun icon in the chat header to switch themes
+
+**Rename Chat**
+- Click the chat title at the top of the chat panel to rename it
+
+**Copy Answers**
+- Hover over any AI answer and click the copy icon to copy it
+
+**Delete Documents**
+- Hover over a document name → click the ✕ icon to delete it
+- Click **Clear All** to remove all documents at once
 
 ---
 
 ## Something not working?
 
 **"GEMINI_API_KEY is missing"**
-→ Make sure you created the `.env` file and added your key. Then stop and restart the app.
+→ Make sure you created the `.env` file with your key, then restart the app.
 
-**App is not answering**
-→ Your API key might be wrong. Double check it at https://aistudio.google.com
+**App is slow or not answering**
+→ Your API key may have run out of free quota. Check at https://aistudio.google.com
 
 **PDF not showing**
-→ Use Chrome, Edge, or Firefox. Very old browsers may not work.
+→ Use Chrome, Edge, or Firefox.
+
+**Summary not loading**
+→ Wait a few seconds after uploading — the summary takes a moment to generate.
+
+---
+
+## For production
+
+Build the app:
+```
+npm run build
+```
+
+Start the server:
+```
+npm run start
+```

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { X, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { clsx } from "clsx";
 
 interface SummaryModalProps {
   docName: string;
@@ -18,11 +17,6 @@ export function SummaryModal({ docName, content, isDark, onClose }: SummaryModal
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const modalBg = isDark ? "bg-[#1a1d2e] border-[#2a2d3e]" : "bg-white border-gray-200";
-  const headerBorder = isDark ? "border-[#2a2d3e]" : "border-gray-200";
-  const titleColor = isDark ? "text-white" : "text-gray-900";
-  const subColor = isDark ? "text-gray-400" : "text-gray-500";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

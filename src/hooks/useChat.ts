@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 
 export interface Source {
@@ -6,8 +6,8 @@ export interface Source {
   document_id: string;
   page_number: number;
   chunk_id: string;
-  text: string;        // exact raw text used for PDF highlighting
-  preview?: string;    // display text shown in UI
+  text: string;
+  preview?: string;
   confidence?: number;
   char_start_pos?: number;
   char_end_pos?: number;
@@ -19,7 +19,6 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
-  isSummary?: boolean;
 }
 
 export function useChat(chatId: string | null) {
@@ -29,17 +28,7 @@ export function useChat(chatId: string | null) {
   const [streamSources, setStreamSources] = useState<Source[]>([]);
 
   const injectSummary = useCallback((docName: string, summary: string) => {
-    const summaryMsg: Message = {
-      id: `summary-${Date.now()}`,
-      role: 'assistant',
-      content: `**📋 Document Summary: ${docName}**\n\n${summary}`,
-      isSummary: true,
-    };
-    setMessages(prev => {
-      // Replace existing summary if present, otherwise prepend
-      const filtered = prev.filter(m => !m.isSummary);
-      return [summaryMsg, ...filtered];
-    });
+    // kept for potential future use
   }, []);
 
   useEffect(() => {
@@ -138,5 +127,5 @@ export function useChat(chatId: string | null) {
     }
   }, [chatId]);
 
-  return { messages, isLoading, streamingContent, streamSources, sendMessage, injectSummary };
+  return { messages, isLoading, streamingContent, streamSources, sendMessage };
 }

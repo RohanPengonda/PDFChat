@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Moon, Sun, Copy, Check, X, FileText } from "lucide-react";
+import { Send, Loader2, Moon, Sun, Copy, Check } from "lucide-react";
 import { Message, Source } from "../hooks/useChat";
 import ReactMarkdown from "react-markdown";
 import { clsx } from "clsx";
@@ -14,8 +14,6 @@ interface ChatInterfaceProps {
   isDark?: boolean;
   onToggleTheme?: () => void;
   chatId?: string | null;
-  summaryDoc?: { name: string; content: string } | null;
-  onCloseSummary?: () => void;
 }
 
 export function ChatInterface({
