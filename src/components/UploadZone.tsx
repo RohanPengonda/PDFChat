@@ -8,7 +8,7 @@ interface UploadZoneProps {
   isDark?: boolean;
 }
 
-export function UploadZone({ onUploadComplete, isDark = true }: UploadZoneProps) {
+export function UploadZone({ onUploadComplete, isDark = false }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -17,8 +17,7 @@ export function UploadZone({ onUploadComplete, isDark = true }: UploadZoneProps)
   const handleDragLeave = () => setIsDragging(false);
 
   const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
+    e.preventDefault(); setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) await uploadFile(files[0]);
   };
@@ -33,13 +32,16 @@ export function UploadZone({ onUploadComplete, isDark = true }: UploadZoneProps)
     try {
       const doc = await api.uploadFile(file);
       onUploadComplete(doc);
-    } catch {
-      alert("Failed to upload file");
-    } finally {
+    } catch { alert("Failed to upload file"); }
+    finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+
+  const base = isDark
+    ? "bg-[#2979ff] hover:bg-[#1565c0] text-white"
+    : "bg-[#b5651d] hover:bg-[#9e5519] text-white";
 
   return (
     <div
@@ -48,27 +50,14 @@ export function UploadZone({ onUploadComplete, isDark = true }: UploadZoneProps)
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={clsx(
-        "w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-medium text-sm transition-all cursor-pointer select-none",
-        isDragging
-          ? "bg-blue-500/20 border-2 border-dashed border-blue-400 text-blue-300"
-          : isDark
-            ? "bg-[#2a3a5c] hover:bg-[#2f4268] text-white border border-[#3a4f7a]"
-            : "bg-blue-600 hover:bg-blue-700 text-white",
-        isUploading && "opacity-70 cursor-not-allowed"
+        "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none",
+        isDragging ? "opacity-70 scale-95" : "",
+        isUploading ? "opacity-60 cursor-not-allowed" : "",
+        base
       )}
     >
       <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={isUploading} />
-      {isUploading ? (
-        <>
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Processing…</span>
-        </>
-      ) : (
-        <>
-          <Upload className="w-4 h-4" />
-          <span>Add Document</span>
-        </>
-      )}
+      {isUploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Processing…</span></> : <><Upload className="w-3.5 h-3.5" /><span>Add Document</span></>}
     </div>
   );
 }

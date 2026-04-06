@@ -190,17 +190,13 @@ export function PDFViewer({
     return () => clearTimeout(timer);
   }, [currentPage, highlightText, fileUrl]);
 
-  const bg = isDark ? "bg-[#12141f]" : "bg-[#e8eaf0]";
-  const cardBg = isDark ? "bg-[#1a1d2e]" : "bg-white";
-  const border = isDark ? "border-[#2a2d3e]" : "border-gray-200";
-  const textMain = isDark ? "text-white" : "text-gray-800";
-  const textSub = isDark ? "text-gray-500" : "text-gray-400";
-  const pageBg = isDark
-    ? "bg-[#1a1d2e] border-[#2a2d3e]"
-    : "bg-white border-gray-200";
-  const pageBtn = isDark
-    ? "text-gray-400 hover:text-white disabled:opacity-20"
-    : "text-gray-500 hover:text-gray-900 disabled:opacity-30";
+  const bg = isDark ? "bg-[#161b27]" : "bg-[#f0ece6]";
+  const cardBg = isDark ? "bg-[#1e2433]" : "bg-white";
+  const border = isDark ? "border-[#2d3548]" : "border-[#d8d0c4]";
+  const textMain = isDark ? "text-[#e8eaf0]" : "text-[#2c2416]";
+  const textSub = isDark ? "text-[#6b7a99]" : "text-[#8a7d6b]";
+  const pageBg = isDark ? "bg-[#1e2433] border-[#2d3548]" : "bg-[#ede8e0] border-[#d8d0c4]";
+  const pageBtn = isDark ? "text-[#6b7a99] hover:text-white disabled:opacity-20" : "text-[#8a7d6b] hover:text-[#2c2416] disabled:opacity-30";
 
   return (
     <div ref={containerRef} className={clsx("flex flex-col h-full", bg)}>
