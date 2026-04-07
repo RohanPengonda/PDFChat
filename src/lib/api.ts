@@ -55,5 +55,16 @@ export const api = {
     if (!res.ok) throw new Error('Failed to get summary');
     const data = await res.json();
     return data.summary;
+  },
+
+  async getSuggestions(documentId: string, lastQuestion: string): Promise<string[]> {
+    const res = await fetch(`/api/documents/${documentId}/suggestions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lastQuestion }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.suggestions || [];
   }
 };

@@ -122,6 +122,43 @@ ${numberedContext}
     res.end();
   },
 
+  async generateSuggestions(documentId: string, lastQuestion: string): Promise<string[]> {
+    const allChunks = db.getAllChunks().filter((c: any) => c.document_id === documentId);
+    if (allChunks.length === 0) return [];
+
+    // Sample chunks spread across the whole document, not just the first 4
+    const step = Math.max(1, Math.floor(allChunks.length / 6));
+    const sampledChunks = allChunks.filter((_: any, i: number) => i % step === 0).slice(0, 6);
+    const sampleText = sampledChunks.map((c: any) => c.content).join('\n\n');
+
+    const prompt = `${prompts.suggestions.prompt}\n\nDocument content:\n${sampleText}\n\nLast question asked: "${lastQuestion}"`;
+
+    try {
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      });
+      const raw = result.text || (result as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+      const cleaned = raw.trim().replace(/^```json\n?|^```\n?|\n?```$/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      const candidates: string[] = Array.isArray(parsed) ? parsed.slice(0, 6) : [];
+
+      // Validate each question — only keep ones that have retrievable content
+      const validated: string[] = [];
+      for (const question of candidates) {
+        if (validated.length >= 3) break;
+        const qVector = await this.generateEmbedding(question);
+        const chunks = await vectorStore.query(qVector, 1, { document_ids: [documentId], query: question });
+        if (chunks.length > 0) {
+          validated.push(question);
+        }
+      }
+      return validated;
+    } catch {
+      return [];
+    }
+  },
+
   async generateSummary(documentId: string): Promise<string> {
     const allChunks = db.getAllChunks().filter((c: any) => c.document_id === documentId);
     if (allChunks.length === 0) return 'No content found in this document.';

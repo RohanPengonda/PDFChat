@@ -14,12 +14,15 @@ interface ChatInterfaceProps {
   isDark?: boolean;
   onToggleTheme?: () => void;
   chatId?: string | null;
+  suggestions?: string[];
+  onSuggestionClick?: (question: string) => void;
 }
 
 export function ChatInterface({
   messages, isLoading, streamingContent,
   onSendMessage, onSourceClick,
   isDark = false, chatId,
+  suggestions = [], onSuggestionClick,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -145,6 +148,27 @@ export function ChatInterface({
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Suggestion chips */}
+      {suggestions.length > 0 && !isLoading && (
+        <div className={clsx("px-4 py-2 flex flex-wrap gap-1.5", isDark ? "bg-[#1a1f2e]" : "bg-[#f0ebe3]")}>
+          <p className={clsx("w-full text-[10px] font-semibold uppercase tracking-widest mb-1", subtext)}>Suggested</p>
+          {suggestions.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => onSuggestionClick?.(q)}
+              className={clsx(
+                "text-xs px-3 py-1.5 rounded-full border transition-all text-left",
+                isDark
+                  ? "border-[#2d3548] text-[#a0b0cc] hover:border-[#5b9cf6] hover:text-[#5b9cf6] hover:bg-[#1e2433]"
+                  : "border-[#c8bfb0] text-[#6b5a45] hover:border-[#b5651d] hover:text-[#b5651d] hover:bg-white"
+              )}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <form onSubmit={handleSubmit} className={clsx("px-4 py-3 border-t", border)}>

@@ -60,7 +60,7 @@ Open your browser and go to: **http://localhost:3000**
 **Ask questions**
 - Type your question in the chat box on the right
 - The app answers and shows exactly which page it found the answer on
-- Click any source card to jump to that page in the PDF
+- Click any source to jump to that page in the PDF
 
 **Document Summary**
 - After uploading, a summary automatically pops up showing what the document is about
@@ -78,10 +78,7 @@ Open your browser and go to: **http://localhost:3000**
 - **Gemini 2.5 Pro** — smarter answers
 
 **Dark / Light Theme**
-- Click the moon or sun icon in the chat header to switch themes
-
-**Rename Chat**
-- Click the chat title at the top of the chat panel to rename it
+- Click the moon or sun icon in the sidebar to switch themes
 
 **Copy Answers**
 - Hover over any AI answer and click the copy icon to copy it
@@ -89,6 +86,33 @@ Open your browser and go to: **http://localhost:3000**
 **Delete Documents**
 - Hover over a document name → click the ✕ icon to delete it
 - Click **Clear All** to remove all documents at once
+
+---
+
+## Customizing AI behavior
+
+All the AI prompts are stored in one file:
+
+```
+src/server/prompts.json
+```
+
+You can open this file and change the text to control how the AI behaves — no coding needed.
+
+**What you can change:**
+
+| Field | What it controls |
+|---|---|
+| `chat.systemInstruction` | How the AI answers questions — tone, citation style, length |
+| `summary.systemRole` | The AI's role when generating summaries |
+| `summary.format` | The exact structure and format of document summaries |
+
+**Example:** To make answers shorter, add this line inside `chat.systemInstruction`:
+```
+- Keep answers under 3 sentences.
+```
+
+**Example:** To change the summary format, edit the `summary.format` field to use your own headings and structure.
 
 ---
 

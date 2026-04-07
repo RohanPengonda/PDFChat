@@ -189,6 +189,18 @@ async function startServer() {
     }
   });
 
+  // 11. Generate suggested questions
+  app.post('/api/documents/:id/suggestions', async (req, res) => {
+    try {
+      const { lastQuestion } = req.body;
+      const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '');
+      res.json({ suggestions });
+    } catch (error) {
+      console.error('Suggestions error:', error);
+      res.status(500).json({ error: 'Failed to generate suggestions' });
+    }
+  });
+
   // Vite middleware for development
   const vite = await createViteServer({
     server: { middlewareMode: true },

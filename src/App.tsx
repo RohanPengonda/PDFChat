@@ -32,7 +32,7 @@ export default function App() {
     api.createChat().then((chat) => setChatId(chat.id)).catch(console.error);
   }, []);
 
-  const { messages, isLoading, streamingContent, sendMessage } = useChat(chatId);
+  const { messages, isLoading, streamingContent, sendMessage, suggestions, setSuggestions } = useChat(chatId);
 
   const handleUploadComplete = async (doc: any) => {
     setDocuments((prev) => [doc, ...prev]);
@@ -219,6 +219,8 @@ export default function App() {
       isDark={isDark}
       onToggleTheme={() => setIsDark(!isDark)}
       chatId={chatId}
+      suggestions={suggestions}
+      onSuggestionClick={(q) => { setSuggestions([]); sendMessage(q, selectedDocId ? [selectedDocId] : documents.map((d) => d.id), selectedModel); }}
     />
   );
 

@@ -26,6 +26,7 @@ export function useChat(chatId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [streamSources, setStreamSources] = useState<Source[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const injectSummary = useCallback((docName: string, summary: string) => {
     // kept for potential future use
@@ -119,6 +120,14 @@ export function useChat(chatId: string | null) {
       setMessages(prev => [...prev, assistantMsg]);
       setStreamingContent('');
       setStreamSources([]);
+
+      // Fetch suggestions after answer (non-blocking)
+      const docIdForSuggestions = documentIds.length > 0 ? documentIds[0] : null;
+      if (docIdForSuggestions) {
+        api.getSuggestions(docIdForSuggestions, content)
+          .then(result => { if (result.length > 0) setSuggestions(result); })
+          .catch(() => {});
+      }
       
     } catch (error) {
       console.error('Send message error:', error);
@@ -127,5 +136,5 @@ export function useChat(chatId: string | null) {
     }
   }, [chatId]);
 
-  return { messages, isLoading, streamingContent, streamSources, sendMessage };
+  return { messages, isLoading, streamingContent, streamSources, sendMessage, suggestions, setSuggestions };
 }
