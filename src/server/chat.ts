@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { db } from './db';
 import { vectorStore } from './vector';
 import { Response } from 'express';
+import prompts from './prompts.json';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -22,15 +23,7 @@ export const chatService = {
       `[${idx + 1}] [Page: ${chunk.metadata.page_number}]\n${chunk.metadata.text}`
     ).join('\n\n');
 
-    const systemInstruction = `You are a helpful document assistant. Answer questions based on the provided context.
-
-IMPORTANT INSTRUCTIONS:
-- Provide clear, direct answers based on the context.
-- Use inline citations [1], [2], [3] matching the numbered context blocks below.
-- Place citations immediately after the relevant sentence or fact.
-- ONLY cite a source if you actually used information from it.
-- If the context does NOT contain the answer, say "The provided document does not contain information about this topic."
-- Be concise and accurate.
+    const systemInstruction = `${prompts.chat.systemInstruction}
 
 Context:
 ${numberedContext}
@@ -134,21 +127,9 @@ ${numberedContext}
     if (allChunks.length === 0) return 'No content found in this document.';
     const sampleChunks = allChunks.slice(0, 6).map((c: any) => c.content).join('\n\n');
 
-    const prompt = `You are a document analyst. Based on the following text from a document, provide a concise structured summary.
+    const prompt = `${prompts.summary.systemRole}
 
-Format your response exactly like this:
-**📄 What this document is about:**
-(1-2 sentences)
-
-**🔑 Key Topics:**
-- topic 1
-- topic 2
-- topic 3
-
-**💡 Main Points:**
-- point 1
-- point 2
-- point 3
+${prompts.summary.format}
 
 Document text:
 ${sampleChunks}`;
