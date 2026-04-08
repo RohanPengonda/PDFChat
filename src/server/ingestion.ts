@@ -1,12 +1,8 @@
 import fs from 'fs';
-import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { db } from './db';
 import { vectorStore } from './vector';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export const ingestionService = {
   async processDocument(file: Express.Multer.File): Promise<string> {

@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
-import fs from 'fs';
 
 // Initialize DB
 const dbPath = path.resolve('database.sqlite');
@@ -65,11 +64,6 @@ export const db = {
   createChunk: (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[], charStartPos?: number, charEndPos?: number) => {
     const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     stmt.run(id, documentId, content, pageNumber, chunkIndex, charStartPos || 0, charEndPos || content.length, JSON.stringify(embedding));
-  },
-
-  getChunksByDocument: (documentId: string) => {
-    const chunks = sqlite.prepare('SELECT * FROM chunks WHERE document_id = ?').all();
-    return chunks.map((c: any) => ({ ...c, embedding: JSON.parse(c.embedding) }));
   },
 
   getAllChunks: () => {

@@ -12,7 +12,6 @@ interface ChatInterfaceProps {
   onSendMessage: (message: string) => void;
   onSourceClick: (source: Source) => void;
   isDark?: boolean;
-  onToggleTheme?: () => void;
   chatId?: string | null;
   suggestions?: string[];
   onSuggestionClick?: (question: string) => void;

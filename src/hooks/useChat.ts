@@ -25,12 +25,7 @@ export function useChat(chatId: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [streamSources, setStreamSources] = useState<Source[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-
-  const injectSummary = useCallback((docName: string, summary: string) => {
-    // kept for potential future use
-  }, []);
 
   useEffect(() => {
     if (chatId) {
@@ -58,7 +53,6 @@ export function useChat(chatId: string | null) {
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamingContent('');
-    setStreamSources([]);
 
     try {
       const response = await fetch('/api/chat', {
@@ -97,7 +91,6 @@ export function useChat(chatId: string | null) {
               }
               if (data.sources) {
                 currentSources = data.sources;
-                setStreamSources(data.sources);
               }
               if (data.error) {
                   console.error("Stream error", data.error);
@@ -119,7 +112,6 @@ export function useChat(chatId: string | null) {
       
       setMessages(prev => [...prev, assistantMsg]);
       setStreamingContent('');
-      setStreamSources([]);
 
       // Fetch suggestions after answer (non-blocking)
       const docIdForSuggestions = documentIds.length > 0 ? documentIds[0] : null;
@@ -136,5 +128,5 @@ export function useChat(chatId: string | null) {
     }
   }, [chatId]);
 
-  return { messages, isLoading, streamingContent, streamSources, sendMessage, suggestions, setSuggestions };
+  return { messages, isLoading, streamingContent, sendMessage, suggestions, setSuggestions };
 }
