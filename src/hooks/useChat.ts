@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 
 export interface Source {
   file_name: string;
-  document_id: string;
+  pdf_id: string;
   page_number: number;
   chunk_id: string;
   text: string;
@@ -45,7 +45,7 @@ export function useChat(chatId: string | null) {
     }
   }, [chatId]);
 
-  const sendMessage = useCallback(async (content: string, documentIds: string[], model?: string) => {
+  const sendMessage = useCallback(async (content: string, mode: 'single' | 'all', pdf_id: string | undefined, model?: string) => {
     if (!chatId) return;
 
     // Add user message immediately
@@ -58,7 +58,7 @@ export function useChat(chatId: string | null) {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, chatId, documentIds, model }),
+        body: JSON.stringify({ message: content, chatId, mode, pdf_id, model }),
       });
 
       if (!response.ok) throw new Error('Chat failed');
@@ -120,7 +120,6 @@ export function useChat(chatId: string | null) {
           .then(result => { if (result.length > 0) setSuggestions(result); })
           .catch(() => {});
       }
-      
     } catch (error) {
       console.error('Send message error:', error);
     } finally {

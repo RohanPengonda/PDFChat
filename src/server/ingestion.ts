@@ -46,7 +46,8 @@ export const ingestionService = {
               id: chunkId,
               values: embedding,
               metadata: {
-                document_id: documentId,
+                pdf_id: documentId,
+                file_name: file.originalname,
                 page_number: chunk.pageNumber,
                 text: chunk.text,
                 char_start_pos: chunk.charStartPos,

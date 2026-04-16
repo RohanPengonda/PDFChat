@@ -7,7 +7,7 @@ import prompts from './prompts.json';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const chatService = {
-  async generateResponse(message: string, chatId: string, documentIds: string[] | undefined, res: Response, model?: string) {
+  async generateResponse(message: string, chatId: string, mode: 'single' | 'all', pdf_id: string | undefined, res: Response, model?: string) {
     // 1. Save User Message
     db.addMessage(chatId, 'user', message);
 
@@ -15,7 +15,8 @@ export const chatService = {
     const queryVector = await this.generateEmbedding(message);
 
     // 3. Retrieve Context with query text for hybrid matching
-    const filter = documentIds && documentIds.length > 0 ? { document_ids: documentIds, query: message } : { query: message };
+    const documentIds = mode === 'single' && pdf_id ? [pdf_id] : undefined;
+    const filter = documentIds && documentIds.length > 0 ? { pdf_ids: documentIds, query: message } : { query: message };
     const relevantChunks = await vectorStore.query(queryVector, 5, filter);
 
     // 4. Construct Prompt - number directly from array to avoid index mismatch
@@ -107,8 +108,8 @@ ${numberedContext}
 
         return {
           citation_number: citedNumbers.size > 0 ? sortedCitedNumbers[idx] : idx + 1,
-          file_name: doc?.original_name || 'Unknown',
-          document_id: c.metadata.document_id,
+          file_name: c.metadata.file_name,
+          pdf_id: c.metadata.pdf_id,
           page_number: c.metadata.page_number,
           chunk_id: c.id,
           text: bestSentence.trim(),
@@ -148,7 +149,7 @@ ${numberedContext}
       for (const question of candidates) {
         if (validated.length >= 3) break;
         const qVector = await this.generateEmbedding(question);
-        const chunks = await vectorStore.query(qVector, 1, { document_ids: [documentId], query: question });
+        const chunks = await vectorStore.query(qVector, 1, { pdf_ids: [documentId], query: question });
         if (chunks.length > 0) {
           validated.push(question);
         }

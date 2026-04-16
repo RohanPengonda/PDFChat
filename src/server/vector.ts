@@ -19,12 +19,12 @@ class LocalVectorStore implements VectorStore {
     // 1. Fetch all chunks from DB
     let chunks = db.getAllChunks();
 
-    if (filter && filter.document_id) {
-      chunks = chunks.filter((c: any) => c.document_id === filter.document_id);
+    if (filter && filter.pdf_id) {
+      chunks = chunks.filter((c: any) => c.document_id === filter.pdf_id);
     }
     
-    if (filter && filter.document_ids && Array.isArray(filter.document_ids)) {
-        chunks = chunks.filter((c: any) => filter.document_ids.includes(c.document_id));
+    if (filter && filter.pdf_ids && Array.isArray(filter.pdf_ids)) {
+        chunks = chunks.filter((c: any) => filter.pdf_ids.includes(c.document_id));
     }
 
     // 2. Hybrid scoring: Combine cosine similarity + keyword matching
@@ -44,7 +44,8 @@ class LocalVectorStore implements VectorStore {
         metadata: {
           text: chunk.content,
           page_number: chunk.page_number,
-          document_id: chunk.document_id,
+          pdf_id: chunk.document_id,
+          file_name: chunk.file_name,
           chunk_index: chunk.chunk_index,
           keyword_score: Math.round(keywordScore * 100)
         }

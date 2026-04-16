@@ -41,6 +41,11 @@ export default function App() {
     content: string;
   } | null>(null);
   const [summaryLoadingId, setSummaryLoadingId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"single" | "all">("all");
+
+  useEffect(() => {
+    setMode(selectedDocId ? "single" : "all");
+  }, [selectedDocId]);
 
   useEffect(() => {
     api.getDocuments().then(setDocuments).catch(console.error);
@@ -89,7 +94,7 @@ export default function App() {
   };
 
   const handleSourceClick = (source: Source) => {
-    setSelectedDocId(source.document_id);
+    setSelectedDocId(source.pdf_id);
     setPageNumber(source.page_number);
     setHighlightText(source.text);
     setMobileTab("pdf");
@@ -318,7 +323,8 @@ export default function App() {
       onSendMessage={(msg) =>
         sendMessage(
           msg,
-          selectedDocId ? [selectedDocId] : documents.map((d) => d.id),
+          mode,
+          mode === "single" ? selectedDocId : undefined,
           selectedModel,
         )
       }
@@ -331,10 +337,15 @@ export default function App() {
         setSuggestions([]);
         sendMessage(
           q,
-          selectedDocId ? [selectedDocId] : documents.map((d) => d.id),
+          mode,
+          mode === "single" ? selectedDocId : undefined,
           selectedModel,
         );
       }}
+      mode={mode}
+      onModeChange={setMode}
+      documents={documents}
+      selectedDocId={selectedDocId}
     />
   );
 

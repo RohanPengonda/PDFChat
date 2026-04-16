@@ -67,7 +67,7 @@ export const db = {
   },
 
   getAllChunks: () => {
-    const chunks = sqlite.prepare('SELECT * FROM chunks').all();
+    const chunks = sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id').all();
     return chunks.map((c: any) => ({ ...c, embedding: JSON.parse(c.embedding) }));
   },
 

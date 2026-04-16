@@ -7,12 +7,6 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import cors from 'cors';
 
-// Services - these will be created shortly
-// We use dynamic imports or require inside the route handlers if we want to be safe, 
-// but for this file structure, we will create them next.
-// For now, I will comment out the imports and usage until the files exist to avoid compilation errors if run immediately,
-// but since I am creating them in the next steps, I will keep them and ensure I create the files before running.
-
 import { db } from './src/server/db';
 import { ingestionService } from './src/server/ingestion';
 import { chatService } from './src/server/chat';
@@ -86,10 +80,10 @@ async function startServer() {
   // 5. Send Message (Streaming)
   app.post('/api/chat', async (req, res) => {
     try {
-      const { message, chatId, documentIds, model } = req.body;
+      const { message, chatId, mode, pdf_id, model } = req.body;
       
-      if (!message || !chatId) {
-        return res.status(400).json({ error: 'Message and chatId are required' });
+      if (!message || !chatId || !mode) {
+        return res.status(400).json({ error: 'Message, chatId, and mode are required' });
       }
 
       // Set headers for SSE
@@ -97,7 +91,7 @@ async function startServer() {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      await chatService.generateResponse(message, chatId, documentIds, res, model);
+      await chatService.generateResponse(message, chatId, mode, pdf_id, res, model);
       
       // End response is handled in generateResponse or here if it returns
     } catch (error) {
