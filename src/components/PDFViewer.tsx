@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { Loader2, ClipboardList } from "lucide-react";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { clsx } from "clsx";
@@ -11,6 +12,9 @@ interface PDFViewerProps {
   pageNumber?: number;
   highlightText?: string;
   isDark?: boolean;
+  onSummaryClick?: () => void;
+  isLoadingSummary?: boolean;
+  docName?: string;
 }
 
 export function PDFViewer({
@@ -18,6 +22,9 @@ export function PDFViewer({
   pageNumber = 1,
   highlightText,
   isDark = true,
+  onSummaryClick,
+  isLoadingSummary = false,
+  docName = "Document",
 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(pageNumber);
@@ -195,8 +202,12 @@ export function PDFViewer({
   const border = isDark ? "border-[#2d3548]" : "border-[#d8d0c4]";
   const textMain = isDark ? "text-[#e8eaf0]" : "text-[#2c2416]";
   const textSub = isDark ? "text-[#6b7a99]" : "text-[#8a7d6b]";
-  const pageBg = isDark ? "bg-[#1e2433] border-[#2d3548]" : "bg-[#ede8e0] border-[#d8d0c4]";
-  const pageBtn = isDark ? "text-[#6b7a99] hover:text-white disabled:opacity-20" : "text-[#8a7d6b] hover:text-[#2c2416] disabled:opacity-30";
+  const pageBg = isDark
+    ? "bg-[#1e2433] border-[#2d3548]"
+    : "bg-[#ede8e0] border-[#d8d0c4]";
+  const pageBtn = isDark
+    ? "text-[#6b7a99] hover:text-white disabled:opacity-20"
+    : "text-[#8a7d6b] hover:text-[#2c2416] disabled:opacity-30";
 
   return (
     <div ref={containerRef} className={clsx("flex flex-col h-full", bg)}>
@@ -347,7 +358,7 @@ export function PDFViewer({
       {fileUrl && numPages > 0 && (
         <div
           className={clsx(
-            "flex items-center justify-between gap-1 border-t px-4 py-2 shrink-0",
+            "flex items-center gap-1 border-t px-4 py-2 shrink-0",
             pageBg,
             border,
           )}
@@ -355,25 +366,40 @@ export function PDFViewer({
           {/* Zoom controls - left */}
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(1)))}
+              onClick={() =>
+                setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(1)))
+              }
               disabled={zoom <= 0.5}
-              className={clsx("w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center transition-colors", pageBtn)}
+              className={clsx(
+                "w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center transition-colors",
+                pageBtn,
+              )}
               title="Zoom out"
-            >−</button>
+            >
+              −
+            </button>
             <span className={clsx("text-xs w-10 text-center", textSub)}>
               {Math.round(zoom * 100)}%
             </span>
             <button
-              onClick={() => setZoom(z => Math.min(2, +(z + 0.1).toFixed(1)))}
+              onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(1)))}
               disabled={zoom >= 2}
-              className={clsx("w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center transition-colors", pageBtn)}
+              className={clsx(
+                "w-7 h-7 rounded-lg text-sm font-bold flex items-center justify-center transition-colors",
+                pageBtn,
+              )}
               title="Zoom in"
-            >+</button>
+            >
+              +
+            </button>
             {zoom !== 1 && (
               <button
                 onClick={() => setZoom(1)}
-                className={clsx("ml-1 px-2 py-0.5 text-[10px] font-medium rounded-lg border transition-colors",
-                  isDark ? "border-[#3a4060] text-blue-400 hover:bg-blue-500/10" : "border-blue-300 text-blue-500 hover:bg-blue-50"
+                className={clsx(
+                  "ml-1 px-2 py-0.5 text-[10px] font-medium rounded-lg border transition-colors",
+                  isDark
+                    ? "border-[#3a4060] text-blue-400 hover:bg-blue-500/10"
+                    : "border-blue-300 text-blue-500 hover:bg-blue-50",
                 )}
                 title="Reset zoom"
               >
@@ -382,12 +408,37 @@ export function PDFViewer({
             )}
           </div>
 
+          {/* Summary button - center */}
+          <div className="flex-1 flex justify-center">
+            <button
+              onClick={onSummaryClick}
+              disabled={isLoadingSummary}
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+                isDark
+                  ? "text-[#6b7a99] hover:text-white hover:bg-blue-500/10 disabled:opacity-50"
+                  : "text-[#8a7d6b] hover:text-[#2c2416] hover:bg-blue-50 disabled:opacity-50",
+              )}
+              title="Generate summary"
+            >
+              {isLoadingSummary ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ClipboardList className="w-3.5 h-3.5" />
+              )}
+              <span>Summary</span>
+            </button>
+          </div>
+
           {/* Page navigation - right */}
           <div className="flex items-center gap-1">
             <button
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => p - 1)}
-              className={clsx("px-3 py-1 text-xs font-medium rounded-xl transition-colors", pageBtn)}
+              className={clsx(
+                "px-3 py-1 text-xs font-medium rounded-xl transition-colors",
+                pageBtn,
+              )}
             >
               ← Prev
             </button>
@@ -397,7 +448,10 @@ export function PDFViewer({
             <button
               disabled={currentPage >= numPages}
               onClick={() => setCurrentPage((p) => p + 1)}
-              className={clsx("px-3 py-1 text-xs font-medium rounded-xl transition-colors", pageBtn)}
+              className={clsx(
+                "px-3 py-1 text-xs font-medium rounded-xl transition-colors",
+                pageBtn,
+              )}
             >
               Next →
             </button>

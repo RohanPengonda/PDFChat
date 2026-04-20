@@ -355,6 +355,33 @@ export default function App() {
       pageNumber={pageNumber}
       highlightText={highlightText}
       isDark={isDark}
+      onSummaryClick={() => {
+        if (selectedDocId) {
+          const doc = documents.find((d) => d.id === selectedDocId);
+          if (doc) {
+            setSummaryLoadingId(selectedDocId);
+            api
+              .getDocumentSummary(selectedDocId)
+              .then((content) => {
+                setSummary({ docName: doc.original_name, content });
+              })
+              .catch(() => {
+                setSummary({
+                  docName: doc.original_name,
+                  content: "Failed to generate summary.",
+                });
+              })
+              .finally(() => setSummaryLoadingId(null));
+          }
+        }
+      }}
+      isLoadingSummary={summaryLoadingId === selectedDocId}
+      docName={
+        selectedDocId
+          ? documents.find((d) => d.id === selectedDocId)?.original_name ||
+            "Document"
+          : "Document"
+      }
     />
   );
 
