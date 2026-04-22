@@ -29,19 +29,87 @@ ChatPDF Pro revolutionizes document interaction by enabling natural language con
 
 ## 🧠 System Architecture
 
-ChatPDF Pro employs a modern full-stack architecture designed for scalability and performance:
+### High-Level Overview
 
-**Frontend (React + TypeScript)**: Component-based UI with real-time state management, handling PDF rendering, chat interactions, and responsive design.
+ChatPDF Pro is a full-stack web application that combines modern frontend technologies with AI-powered backend services to enable conversational interactions with PDF documents. The system follows a client-server architecture with specialized components for document processing, vector search, and AI generation.
 
-**Backend (Node.js + Express)**: RESTful API server managing document ingestion, vector operations, and AI orchestration with streaming response support.
+### Architecture Diagram
 
-**AI Pipeline**:
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   React UI      │    │   Express API   │    │   AI Services   │
+│   (Frontend)    │◄──►│   (Backend)     │◄──►│   (Gemini)      │
+│                 │    │                 │    │                 │
+│ - PDF Viewer    │    │ - Document Mgmt │    │ - Text Gen      │
+│ - Chat Interface│    │ - Vector Search │    │ - Embeddings    │
+│ - Upload Zone   │    │ - Chat History  │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │   Data Layer    │
+                    │                 │
+                    │ - SQLite DB     │
+                    │ - Vector Store  │
+                    │ - File Storage  │
+                    └─────────────────┘
+```
 
-1. **Ingestion**: PDF text extraction → Semantic chunking → Embedding generation → Vector storage
-2. **Query Processing**: User query → Embedding → Vector similarity search → Context assembly → AI generation
-3. **Response Flow**: Streaming tokens → Citation parsing → Source highlighting → UI updates
+### Component Breakdown
 
-**Data Layer**: SQLite for metadata and relationships, integrated vector store for semantic search, ensuring ACID compliance and fast retrieval.
+#### Frontend Layer
+
+- **React Application**: Built with TypeScript and Vite for fast development and hot reloading
+- **PDF Rendering**: Client-side PDF display using React PDF with text highlighting capabilities
+- **Chat Interface**: Real-time messaging interface with Server-Sent Events streaming
+- **State Management**: Custom hooks managing chat state, document selection, and UI interactions
+- **Responsive Design**: Adaptive UI with dark/light themes and mobile optimization
+
+#### Backend Layer
+
+- **API Server**: Express.js handling RESTful endpoints and real-time streaming via SSE
+- **Document Ingestion Pipeline**: PDF parsing with PDF.js, semantic chunking with overlap, and batch embedding generation
+- **Vector Search Engine**: Custom hybrid search combining cosine similarity (40%) and keyword matching (60%)
+- **AI Orchestration**: Google Gemini API integration with retry logic and model selection (Flash/Pro)
+- **File Management**: Multer-based upload handling with UUID-based storage
+
+#### Data Layer
+
+- **SQLite Database**: Relational storage for documents, chunks, chats, and messages with foreign key relationships
+- **In-Memory Vector Store**: Fast semantic search index loaded from database chunks
+- **File Storage**: Local filesystem storage for uploaded PDFs with metadata preservation
+
+### Data Flow Architecture
+
+#### Document Ingestion Pipeline
+
+```
+PDF Upload → File Validation → Text Extraction → Semantic Chunking → Embedding Generation → Database Storage → Vector Index Update
+```
+
+#### Query Processing Pipeline
+
+```
+User Query → Query Embedding → Hybrid Vector Search → Context Retrieval → Prompt Assembly → AI Generation → Streaming Response → Citation Parsing → Source Attribution
+```
+
+#### Response Delivery Flow
+
+```
+AI Response Stream → Token-by-Token Updates → Citation Detection → Source Validation → UI Highlighting → Chat Persistence
+```
+
+### Key Design Decisions
+
+- **Hybrid Search Algorithm**: Combines semantic understanding (embeddings) with exact matching (keywords) for optimal relevance
+- **Streaming Architecture**: Server-Sent Events enable real-time UI updates without WebSocket complexity
+- **Citation Validation**: Post-processing ensures only genuinely used sources are displayed with confidence scores
+- **Chunking Strategy**: 1000-character chunks with 100-character overlap preserve context across boundaries
+- **Batch Processing**: Embedding generation in batches of 5 prevents API rate limiting
+- **ACID Compliance**: SQLite ensures data integrity for chat history and document metadata
+
+This architecture provides a scalable, responsive platform for AI-powered document analysis while maintaining high accuracy in source attribution and user experience.
 
 ---
 
