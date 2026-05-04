@@ -9,3 +9,4 @@ coverage/
 database.sqlite
 uploads/*
 !uploads/.gitkeep
+interview.md

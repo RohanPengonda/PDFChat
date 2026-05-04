@@ -143,7 +143,9 @@ This architecture provides a scalable, responsive platform for AI-powered docume
 
 ## 📸 Screenshots / Demo
 
-_Coming soon - Interactive demo showcasing PDF upload, AI chat, and source highlighting_
+![Upload and Chat Interface](screenshots/1.png)
+
+![Summary View](screenshots/2_Summary.png)
 
 ---
 
