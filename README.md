@@ -6,9 +6,9 @@
 
 ## 🚀 Overview
 
-PDFChat Pro revolutionizes document interaction by enabling natural language conversations with PDF content. Instead of manually searching through pages, users can ask complex questions and receive precise answers with source citations, summaries, and contextual insights.
+PDFChat revolutionizes document interaction by enabling natural language conversations with PDF content. Instead of manually searching through pages, users can ask complex questions and receive precise answers with source citations, summaries, and contextual insights.
 
-**Problem Solved**: Traditional PDF readers offer basic search, but fail at understanding context, relationships between concepts, or answering nuanced questions. PDFChat Pro bridges this gap by leveraging advanced AI to comprehend document semantics, making information retrieval intuitive and efficient.
+**Problem Solved**: Traditional PDF readers offer basic search, but fail at understanding context, relationships between concepts, or answering nuanced questions. PDFChat bridges this gap by leveraging advanced AI to comprehend document semantics, making information retrieval intuitive and efficient.
 
 **Real-World Impact**: Ideal for researchers analyzing academic papers, professionals reviewing contracts, students studying textbooks, or anyone needing to extract insights from dense documentation quickly and accurately.
 
@@ -162,7 +162,7 @@ This architecture provides a scalable, responsive platform for AI-powered docume
 
    ```bash
    git clone <repository-url>
-   cd ChatPDF_Pro
+   cd PDFCHAT
    ```
 
 2. **Install Dependencies**
