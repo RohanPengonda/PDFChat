@@ -1,4 +1,4 @@
-# ChatPDF Pro
+# PDFChat Pro
 
 **Intelligent Document Analysis Through Conversational AI** — Transform static PDFs into interactive knowledge bases with AI-powered semantic search and contextual responses.
 
@@ -6,9 +6,9 @@
 
 ## 🚀 Overview
 
-ChatPDF Pro revolutionizes document interaction by enabling natural language conversations with PDF content. Instead of manually searching through pages, users can ask complex questions and receive precise answers with source citations, summaries, and contextual insights.
+PDFChat Pro revolutionizes document interaction by enabling natural language conversations with PDF content. Instead of manually searching through pages, users can ask complex questions and receive precise answers with source citations, summaries, and contextual insights.
 
-**Problem Solved**: Traditional PDF readers offer basic search, but fail at understanding context, relationships between concepts, or answering nuanced questions. ChatPDF Pro bridges this gap by leveraging advanced AI to comprehend document semantics, making information retrieval intuitive and efficient.
+**Problem Solved**: Traditional PDF readers offer basic search, but fail at understanding context, relationships between concepts, or answering nuanced questions. PDFChat Pro bridges this gap by leveraging advanced AI to comprehend document semantics, making information retrieval intuitive and efficient.
 
 **Real-World Impact**: Ideal for researchers analyzing academic papers, professionals reviewing contracts, students studying textbooks, or anyone needing to extract insights from dense documentation quickly and accurately.
 
@@ -31,7 +31,7 @@ ChatPDF Pro revolutionizes document interaction by enabling natural language con
 
 ### High-Level Overview
 
-ChatPDF Pro is a full-stack web application that combines modern frontend technologies with AI-powered backend services to enable conversational interactions with PDF documents. The system follows a client-server architecture with specialized components for document processing, vector search, and AI generation.
+PDFChat Pro is a full-stack web application that combines modern frontend technologies with AI-powered backend services to enable conversational interactions with PDF documents. The system follows a client-server architecture with specialized components for document processing, vector search, and AI generation.
 
 ### Architecture Diagram
 
