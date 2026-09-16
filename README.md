@@ -250,7 +250,7 @@ npm start
 
 ## 👨‍💻 Author
 
-**Rohan** - Full-Stack Developer passionate about AI-powered applications and developer experience.
+Full-Stack Developer passionate about AI-powered applications and developer experience.
 
 _Built with modern web technologies and cutting-edge AI to demonstrate practical implementation of retrieval-augmented generation systems._
 
