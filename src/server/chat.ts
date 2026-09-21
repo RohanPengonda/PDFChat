@@ -33,9 +33,19 @@ ${numberedContext}
     // 5. Generate Response (Streaming)
     const selectedModel = model || "gemini-2.5-flash";
 
-    // Retry logic for 503/429 errors
+    // Retry logic for transient errors (503/429 rate limits and network drops)
     let retries = 3;
     let result;
+
+    const isRetryable = (e: any): boolean => {
+      if (e?.status === 503 || e?.status === 429) return true;
+      // Network-level failures surface as "fetch failed"/socket errors with no HTTP status
+      if (e?.status === undefined) {
+        const msg = `${e?.message || ''} ${e?.cause?.message || ''}`;
+        return /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(msg);
+      }
+      return false;
+    };
 
     while (retries > 0) {
       try {
@@ -46,10 +56,10 @@ ${numberedContext}
         });
         break;
       } catch (error: any) {
-        if ((error.status === 503 || error.status === 429) && retries > 1) {
+        if (isRetryable(error) && retries > 1) {
           retries--;
           const delay = (4 - retries) * 3000;
-          console.log(`Model ${selectedModel} unavailable (${error.status}), retrying in ${delay/1000}s...`);
+          console.log(`Model ${selectedModel} unavailable (${error?.status || error?.message}), retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           const msg = error?.message || 'Model error';
@@ -62,12 +72,21 @@ ${numberedContext}
 
     let fullResponse = '';
 
-    for await (const chunk of result) {
-      const chunkText = chunk.text;
-      if (chunkText) {
-        fullResponse += chunkText;
-        res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+    try {
+      for await (const chunk of result) {
+        const chunkText = chunk.text;
+        if (chunkText) {
+          fullResponse += chunkText;
+          res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+        }
       }
+    } catch (error: any) {
+      console.error('Stream interrupted:', error?.message || error);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ error: error?.message || 'Stream failed' })}\n\n`);
+        res.end();
+      }
+      return;
     }
 
     // 6. Save Assistant Message
@@ -103,8 +122,9 @@ ${numberedContext}
           if (score > bestScore) { bestScore = score; bestSentence = sentence; }
         }
 
-        // Skip this source entirely if no query words found in the chunk
-        if (bestScore === 0) return null;
+        // Only skip low-relevance chunks in fallback mode (no model citations);
+        // chunks explicitly cited by the model must always be shown.
+        if (citedNumbers.size === 0 && bestScore === 0) return null;
 
         return {
           citation_number: citedNumbers.size > 0 ? sortedCitedNumbers[idx] : idx + 1,

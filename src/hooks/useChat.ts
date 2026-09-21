@@ -114,7 +114,7 @@ export function useChat(chatId: string | null) {
       setStreamingContent('');
 
       // Fetch suggestions after answer (non-blocking)
-      const docIdForSuggestions = documentIds.length > 0 ? documentIds[0] : null;
+      const docIdForSuggestions = pdf_id || null;
       if (docIdForSuggestions) {
         api.getSuggestions(docIdForSuggestions, content)
           .then(result => { if (result.length > 0) setSuggestions(result); })

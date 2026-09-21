@@ -78,6 +78,7 @@ export function PDFViewer({
       // Prepare search text - normalize whitespace
       const searchText = highlightText.toLowerCase().trim();
       const normalizedSearch = searchText.replace(/\s+/g, " ");
+      const searchCompact = normalizedSearch.replace(/\s+/g, "");
 
       // Collect all text spans and their positions
       const spanTexts: { span: HTMLElement; text: string; index: number }[] =
@@ -90,52 +91,41 @@ export function PDFViewer({
         globalIndex += text.length;
       });
 
-      // Concatenate all text for searching
-      const fullText = spanTexts.map((s) => s.text).join("");
-
-      // Helper function to escape regex special characters
-      const escapeRegex = (str: string) => {
-        return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      };
-
-      let matchStart = fullText.indexOf(normalizedSearch);
-
-      // Try with flexible whitespace
-      if (matchStart === -1 && normalizedSearch.length > 10) {
-        try {
-          const searchPart = normalizedSearch.slice(
-            0,
-            Math.min(50, normalizedSearch.length),
-          );
-          const escaped = escapeRegex(searchPart);
-          const flexiblePattern = escaped.replace(/\\ /g, "\\s*");
-          const regex = new RegExp(flexiblePattern);
-          const match = fullText.match(regex);
-          if (match && match.index !== undefined) matchStart = match.index;
-        } catch (e) {}
+      // The stored chunk text joins pdf items with spaces, while the text layer
+      // renders items without separator spaces. Build a whitespace-stripped copy
+      // of the page text (with an offset map back to real span positions) so the
+      // search string aligns with what is actually rendered.
+      let fullCompact = "";
+      const offsetMap: number[] = [];
+      for (const s of spanTexts) {
+        for (let i = 0; i < s.text.length; i++) {
+          if (!/\s/.test(s.text[i])) {
+            offsetMap.push(s.index + i);
+            fullCompact += s.text[i];
+          }
+        }
       }
 
-      // Try substring match (first 40 chars) - only if text is long enough
-      if (matchStart === -1 && normalizedSearch.length >= 20) {
-        const substring = normalizedSearch.substring(
-          0,
-          Math.min(40, normalizedSearch.length),
-        );
-        matchStart = fullText.indexOf(substring);
-      }
+      let matchStart = searchCompact ? fullCompact.indexOf(searchCompact) : -1;
 
-      // Last resort: match first keyword ONLY if it's specific enough (>5 chars)
+      // Fallback: match the first specific keyword (>5 chars) in compact space
       if (matchStart === -1) {
         const keywords = normalizedSearch
           .split(/\s+/)
           .filter((p) => p.length > 5);
         for (const keyword of keywords) {
-          const pos = fullText.indexOf(keyword);
+          const kwCompact = keyword.replace(/\s+/g, "");
+          const pos = kwCompact ? fullCompact.indexOf(kwCompact) : -1;
           if (pos !== -1) {
             matchStart = pos;
             break;
           }
         }
+      }
+
+      // Map the compact match position back to a real position in the text layer
+      if (matchStart !== -1) {
+        matchStart = offsetMap[matchStart] ?? -1;
       }
 
       if (matchStart !== -1) {

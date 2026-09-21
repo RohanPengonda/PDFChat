@@ -321,12 +321,7 @@ export default function App() {
       isLoading={isLoading}
       streamingContent={streamingContent}
       onSendMessage={(msg) =>
-        sendMessage(
-          msg,
-          mode,
-          mode === "single" ? selectedDocId : undefined,
-          selectedModel,
-        )
+        sendMessage(msg, mode, selectedDocId || undefined, selectedModel)
       }
       onSourceClick={handleSourceClick}
       isDark={isDark}
@@ -335,12 +330,7 @@ export default function App() {
       suggestions={suggestions}
       onSuggestionClick={(q) => {
         setSuggestions([]);
-        sendMessage(
-          q,
-          mode,
-          mode === "single" ? selectedDocId : undefined,
-          selectedModel,
-        );
+        sendMessage(q, mode, selectedDocId || undefined, selectedModel);
       }}
       mode={mode}
       onModeChange={setMode}
