@@ -16,9 +16,9 @@ PDFChat revolutionizes document interaction by enabling natural language convers
 
 ## ✨ Key Features
 
-- **🧠 Semantic Vector Search**: Embeds document chunks into high-dimensional vectors for context-aware retrieval, far surpassing keyword matching
+- **🧠 Hybrid Vector Search**: Embeds document chunks into high-dimensional vectors using a lightweight local embedding, then ranks results by combining vector similarity with keyword matching
 - **🔄 Hybrid Matching Algorithm**: Combines vector similarity with text-based filtering for optimal relevance and accuracy
-- **📊 Intelligent Chunking**: Dynamically segments PDF content by semantic boundaries, preserving context across page breaks
+- **📊 Intelligent Chunking**: Splits PDF content into fixed-size chunks with overlap to preserve context across page boundaries
 - **⚡ Streaming AI Responses**: Real-time response generation using Google's Gemini models with automatic retry logic for reliability
 - **📍 Precision Citations**: Automatic source attribution with page numbers and confidence scores for verifiable answers
 - **🎯 Multi-Document Analysis**: Query across single documents or entire collections with configurable scope
@@ -69,15 +69,15 @@ PDFChat Pro is a full-stack web application that combines modern frontend techno
 #### Backend Layer
 
 - **API Server**: Express.js handling RESTful endpoints and real-time streaming via SSE
-- **Document Ingestion Pipeline**: PDF parsing with PDF.js, semantic chunking with overlap, and batch embedding generation
+- **Document Ingestion Pipeline**: PDF parsing with PDF.js, fixed-size chunking with overlap, and lightweight local embedding generation in batches
 - **Vector Search Engine**: Custom hybrid search combining cosine similarity (40%) and keyword matching (60%)
 - **AI Orchestration**: Google Gemini API integration with retry logic and model selection (Flash/Pro)
-- **File Management**: Multer-based upload handling with UUID-based storage
+- **File Management**: Multer-based upload handling with generated filenames on local disk
 
 #### Data Layer
 
 - **SQLite Database**: Relational storage for documents, chunks, chats, and messages with foreign key relationships
-- **In-Memory Vector Store**: Fast semantic search index loaded from database chunks
+- **Vector Store**: SQLite-backed chunk retrieval scored on-the-fly with a hybrid of cosine similarity and keyword matching
 - **File Storage**: Local filesystem storage for uploaded PDFs with metadata preservation
 
 ### Data Flow Architecture
@@ -85,7 +85,7 @@ PDFChat Pro is a full-stack web application that combines modern frontend techno
 #### Document Ingestion Pipeline
 
 ```
-PDF Upload → File Validation → Text Extraction → Semantic Chunking → Embedding Generation → Database Storage → Vector Index Update
+PDF Upload → Text Extraction → Chunking → Embedding Generation → Database Storage → Retrieval Ready
 ```
 
 #### Query Processing Pipeline
@@ -102,7 +102,7 @@ AI Response Stream → Token-by-Token Updates → Citation Detection → Source 
 
 ### Key Design Decisions
 
-- **Hybrid Search Algorithm**: Combines semantic understanding (embeddings) with exact matching (keywords) for optimal relevance
+- **Hybrid Search Algorithm**: Combines vector similarity (embeddings) with exact keyword matching for optimal relevance
 - **Streaming Architecture**: Server-Sent Events enable real-time UI updates without WebSocket complexity
 - **Citation Validation**: Post-processing ensures only genuinely used sources are displayed with confidence scores
 - **Chunking Strategy**: 1000-character chunks with 100-character overlap preserve context across boundaries
@@ -137,7 +137,7 @@ This architecture provides a scalable, responsive platform for AI-powered docume
 - **Google Gemini API** - Advanced language models (2.5 Flash/Pro)
 - **PDF.js** - PDF parsing and text extraction
 - **Custom Vector Store** - Semantic search implementation
-- **Embedding Models** - Text-to-vector conversion for similarity matching
+- **Custom Embedding** - Local hash-based text-to-vector conversion (768-dim) for similarity matching
 
 ---
 

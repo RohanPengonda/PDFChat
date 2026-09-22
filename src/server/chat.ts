@@ -111,7 +111,6 @@ ${numberedContext}
 
     const sources = chunksToShow
       .map((c, idx) => {
-        const doc = db.getDocument(c.metadata.document_id) as any;
         const chunkText = c.metadata.text;
 
         const sentences = chunkText.split(/(?<=[.!?])\s+/).filter((s: string) => s.trim().length > 10);
