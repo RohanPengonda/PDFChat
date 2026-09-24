@@ -232,7 +232,7 @@ export function PDFViewer({
         ) : (
           <div
             className={clsx(
-              "w-full h-[85vh] rounded-2xl border flex flex-col items-center justify-center gap-5 text-center",
+              "w-full min-h-full rounded-2xl border flex flex-col items-center justify-center gap-5 text-center",
               cardBg,
               border,
             )}
@@ -368,7 +368,7 @@ export function PDFViewer({
             >
               −
             </button>
-            <span className={clsx("text-xs w-10 text-center", textSub)}>
+            <span className={clsx("text-xs w-9 sm:w-10 text-center", textSub)}>
               {Math.round(zoom * 100)}%
             </span>
             <button
@@ -386,7 +386,7 @@ export function PDFViewer({
               <button
                 onClick={() => setZoom(1)}
                 className={clsx(
-                  "ml-1 px-2 py-0.5 text-[10px] font-medium rounded-lg border transition-colors",
+                  "ml-1 px-2 py-0.5 text-[10px] font-medium rounded-lg border transition-colors hidden sm:flex",
                   isDark
                     ? "border-[#3a4060] text-blue-400 hover:bg-blue-500/10"
                     : "border-blue-300 text-blue-500 hover:bg-blue-50",
@@ -416,7 +416,7 @@ export function PDFViewer({
               ) : (
                 <ClipboardList className="w-3.5 h-3.5" />
               )}
-              <span>Summary</span>
+              <span className="hidden sm:inline">Summary</span>
             </button>
           </div>
 
@@ -426,24 +426,28 @@ export function PDFViewer({
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => p - 1)}
               className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-xl transition-colors",
+                "px-2 sm:px-3 py-1 text-xs font-medium rounded-xl transition-colors",
                 pageBtn,
               )}
+              title="Previous page"
             >
-              ← Prev
+              ←<span className="hidden sm:inline">&nbsp;Prev</span>
             </button>
-            <span className={clsx("text-xs px-3 border-x", border, textSub)}>
+            <span
+              className={clsx("text-xs px-2 sm:px-3 border-x", border, textSub)}
+            >
               {currentPage} / {numPages}
             </span>
             <button
               disabled={currentPage >= numPages}
               onClick={() => setCurrentPage((p) => p + 1)}
               className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-xl transition-colors",
+                "px-2 sm:px-3 py-1 text-xs font-medium rounded-xl transition-colors",
                 pageBtn,
               )}
+              title="Next page"
             >
-              Next →
+              <span className="hidden sm:inline">Next&nbsp;</span>→
             </button>
           </div>
         </div>

@@ -55,6 +55,14 @@ export default function App() {
       .catch(console.error);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = isDark ? "dark" : "light";
+    document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+    document.body.style.backgroundColor = isDark ? "#161b27" : "#ede8e0";
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", isDark ? "#161b27" : "#f7f4f0");
+  }, [isDark]);
+
   const {
     messages,
     isLoading,
@@ -68,6 +76,7 @@ export default function App() {
     setDocuments((prev) => [doc, ...prev]);
     setSelectedDocId(doc.id);
     setSidebarOpen(false);
+    setMobileTab("pdf");
     try {
       const content = await api.getDocumentSummary(doc.id);
       setSummary({ docName: doc.original_name || doc.filename, content });
@@ -163,43 +172,45 @@ export default function App() {
   };
   const T = isDark ? D : L;
 
-  const SidebarContent = () => (
+  const SidebarContent = ({ chrome = true }: { chrome?: boolean } = {}) => (
     <div className="flex flex-col h-full">
       {/* Window chrome / title bar */}
-      <div
-        className={clsx(
-          "px-4 py-3 flex items-center justify-between border-b",
-          T.border,
-        )}
-      >
-        <div className="flex items-center gap-2">
-          {/* macOS dots */}
-          <span className="w-3 h-3 rounded-full bg-[#ff5f57] inline-block" />
-          <span className="w-3 h-3 rounded-full bg-[#febc2e] inline-block" />
-          <span className="w-3 h-3 rounded-full bg-[#28c840] inline-block" />
+      {chrome && (
+        <div
+          className={clsx(
+            "px-4 py-3 flex items-center justify-between border-b",
+            T.border,
+          )}
+        >
+          <div className="flex items-center gap-2">
+            {/* macOS dots */}
+            <span className="w-3 h-3 rounded-full bg-[#ff5f57] inline-block" />
+            <span className="w-3 h-3 rounded-full bg-[#febc2e] inline-block" />
+            <span className="w-3 h-3 rounded-full bg-[#28c840] inline-block" />
+          </div>
+          <span className={clsx("text-xs font-medium tracking-wide", T.subtext)}>
+            ChatPDF Pro
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsDark(!isDark)}
+              className={clsx("p-1 rounded transition-colors", T.subtext)}
+            >
+              {isDark ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className={clsx("lg:hidden p-1", T.subtext)}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-        <span className={clsx("text-xs font-medium tracking-wide", T.subtext)}>
-          ChatPDF Pro
-        </span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setIsDark(!isDark)}
-            className={clsx("p-1 rounded transition-colors", T.subtext)}
-          >
-            {isDark ? (
-              <Sun className="w-3.5 h-3.5" />
-            ) : (
-              <Moon className="w-3.5 h-3.5" />
-            )}
-          </button>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className={clsx("lg:hidden p-1", T.subtext)}
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
         {/* Model selector */}
@@ -282,7 +293,7 @@ export default function App() {
                     onClick={(e) => handleSummaryClick(doc, e)}
                     disabled={summaryLoadingId === doc.id}
                     className={clsx(
-                      "absolute right-6 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded transition-all",
+                      "absolute right-6 top-1/2 -translate-y-1/2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded transition-all",
                       T.sourceLink,
                     )}
                     title="Summary"
@@ -296,7 +307,7 @@ export default function App() {
                   <button
                     onClick={() => handleDeleteDoc(doc.id)}
                     className={clsx(
-                      "absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded transition-all",
+                      "absolute right-1.5 top-1/2 -translate-y-1/2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded transition-all",
                       T.subtext,
                       "hover:text-red-400",
                     )}
@@ -376,7 +387,7 @@ export default function App() {
   );
 
   return (
-    <div className={clsx("flex h-screen overflow-hidden font-sans", T.app)}>
+    <div className={clsx("flex h-dvh overflow-hidden font-sans", T.app)}>
       {summary && (
         <SummaryModal
           docName={summary.docName}
@@ -512,7 +523,7 @@ export default function App() {
           <div className={clsx("flex-1 overflow-hidden", T.chat)}>
             {mobileTab === "sidebar" && (
               <div className={clsx("h-full overflow-y-auto", T.sidebar)}>
-                <SidebarContent />
+                <SidebarContent chrome={false} />
               </div>
             )}
             {mobileTab === "pdf" && pdfPanel}
@@ -520,7 +531,7 @@ export default function App() {
           </div>
           <div
             className={clsx(
-              "flex-shrink-0 border-t flex",
+              "flex-shrink-0 border-t flex pb-[env(safe-area-inset-bottom)]",
               T.sidebar,
               T.sidebarBorder,
             )}

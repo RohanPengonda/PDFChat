@@ -90,6 +90,13 @@ export function ChatInterface({
     ? "bg-[#2d3548] text-[#6b7a99] hover:text-white"
     : "bg-[#ede8e0] text-[#8a7d6b] hover:text-[#2c2416] border border-[#d8d0c4]";
 
+  const selectedDocName =
+    documents.find((d) => d.id === selectedDocId)?.original_name || "None";
+  const shortDocName =
+    selectedDocName.length > 24
+      ? selectedDocName.slice(0, 21) + "…"
+      : selectedDocName;
+
   return (
     <div className={clsx("flex flex-col h-full", bg)}>
       {/* Chat header */}
@@ -142,6 +149,7 @@ export function ChatInterface({
                 className={clsx(
                   "prose prose-sm max-w-none",
                   isDark ? "prose-invert" : "",
+                  msg.role === "user" && "prose-invert text-white",
                 )}
               >
                 <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -150,7 +158,7 @@ export function ChatInterface({
                 <button
                   onClick={() => handleCopy(msg.id, msg.content)}
                   className={clsx(
-                    "absolute -top-2 -right-2 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover/msg:opacity-100 transition-all shadow-sm",
+                    "absolute -top-2 -right-2 w-6 h-6 rounded-lg flex items-center justify-center opacity-100 lg:opacity-0 lg:group-hover/msg:opacity-100 focus-visible:opacity-100 transition-all shadow-sm",
                     copyBtn,
                   )}
                   title="Copy"
@@ -266,17 +274,14 @@ export function ChatInterface({
             value={mode}
             onChange={(e) => onModeChange(e.target.value as "single" | "all")}
             className={clsx(
-              "text-xs px-2 py-1 rounded border",
+              "text-xs px-2 py-1 rounded border max-w-[150px] sm:max-w-[220px]",
               inputBg,
               border,
               text,
             )}
           >
             <option value="single">
-              This PDF (
-              {documents.find((d) => d.id === selectedDocId)?.original_name ||
-                "None"}
-              )
+              This PDF ({shortDocName})
             </option>
             <option value="all">All PDFs</option>
           </select>
@@ -284,7 +289,7 @@ export function ChatInterface({
         <form
           onSubmit={handleSubmit}
           className={clsx(
-            "flex items-center gap-2 px-4 py-2.5 rounded-2xl border transition-colors focus-within:border-opacity-80",
+            "flex items-center gap-2 px-4 py-2.5 rounded-2xl border transition-colors",
             inputBg,
           )}
         >
