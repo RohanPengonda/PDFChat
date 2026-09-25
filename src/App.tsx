@@ -189,7 +189,7 @@ export default function App() {
             <span className="w-3 h-3 rounded-full bg-[#28c840] inline-block" />
           </div>
           <span className={clsx("text-xs font-medium tracking-wide", T.subtext)}>
-            ChatPDF Pro
+            PDFChat
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -463,7 +463,7 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             <span className={clsx("text-sm font-semibold", T.text)}>
-              ChatPDF Pro
+              PDFChat
             </span>
             <button
               onClick={() => setIsDark(!isDark)}
@@ -507,7 +507,7 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             <span className={clsx("text-sm font-semibold", T.text)}>
-              ChatPDF Pro
+              PDFChat
             </span>
             <button
               onClick={() => setIsDark(!isDark)}

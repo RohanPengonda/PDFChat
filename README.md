@@ -1,29 +1,33 @@
-# PDFChat Pro
+# PDFChat
 
-**Intelligent Document Analysis Through Conversational AI** — Transform static PDFs into interactive knowledge bases with AI-powered semantic search and contextual responses.
+**Intelligent Document Analysis Through Conversational AI** — Transform static PDFs into interactive knowledge bases with AI-powered retrieval and contextual answers.
 
 ---
 
 ## 🚀 Overview
 
-PDFChat revolutionizes document interaction by enabling natural language conversations with PDF content. Instead of manually searching through pages, users can ask complex questions and receive precise answers with source citations, summaries, and contextual insights.
+PDFChat lets you hold natural language conversations with your PDFs. Instead of manually searching through pages, ask complex questions and get precise answers with source citations you can click through to the exact page.
 
-**Problem Solved**: Traditional PDF readers offer basic search, but fail at understanding context, relationships between concepts, or answering nuanced questions. PDFChat bridges this gap by leveraging advanced AI to comprehend document semantics, making information retrieval intuitive and efficient.
+**Problem Solved**: Traditional PDF readers offer basic text search, but fail at understanding context, relationships between concepts, or answering nuanced questions. PDFChat bridges this gap by retrieving the most relevant passages and letting a frontier model reason over them.
 
-**Real-World Impact**: Ideal for researchers analyzing academic papers, professionals reviewing contracts, students studying textbooks, or anyone needing to extract insights from dense documentation quickly and accurately.
+**Real-World Impact**: Ideal for researchers analyzing academic papers, professionals reviewing contracts, students studying textbooks, or anyone who needs to extract insights from dense documentation quickly.
 
 ---
 
 ## ✨ Key Features
 
-- **🧠 Hybrid Vector Search**: Embeds document chunks into high-dimensional vectors using a lightweight local embedding, then ranks results by combining vector similarity with keyword matching
-- **🔄 Hybrid Matching Algorithm**: Combines vector similarity with text-based filtering for optimal relevance and accuracy
-- **📊 Intelligent Chunking**: Splits PDF content into fixed-size chunks with overlap to preserve context across page boundaries
-- **⚡ Streaming AI Responses**: Real-time response generation using Google's Gemini models with automatic retry logic for reliability
-- **📍 Precision Citations**: Automatic source attribution with page numbers and confidence scores for verifiable answers
-- **🎯 Multi-Document Analysis**: Query across single documents or entire collections with configurable scope
-- **📱 Adaptive UI**: Responsive design with dark/light themes and mobile-optimized interactions
-- **🔧 Model Flexibility**: Switch between Gemini 2.5 Flash (speed-optimized) and Pro (depth-optimized) based on use case
+- **📊 Page-aware chunking**: Splits each page into 1000-character chunks with 100-character overlap, keeping the page number and character offsets of every chunk
+- **🔀 Hybrid retrieval**: Combines cosine similarity over local hash embeddings (40%) with weighted keyword matching (60%) to rank relevant chunks
+- **💬 Streaming AI answers**: Real-time token streaming over Server-Sent Events, powered by Google Gemini with automatic retry on 429/503 and network failures
+- **📍 Precision citations**: Only chunks the model actually cited (`[1]`, `[2]`, …) are returned, each with page number, matched sentence, and a confidence score
+- **🧠 Click-to-source**: Clicking a citation opens the source PDF at the cited page with the matching text highlighted
+- **📄 AI document summaries**: One-click structured summary generated per document, shown in a modal on upload
+- **💡 Suggested follow-ups**: Up to 3 AI-generated next questions, each validated against the document so you never get a dead-end suggestion
+- **🎯 Single or all documents**: Scope a question to the selected PDF or query across your whole library
+- **🔧 Model flexibility**: Switch between Gemini 2.5 Flash (fast) and 2.5 Pro (deeper) at any time
+- **📱 Adaptive UI**: Light/dark themes, sidebar drawer on tablet, tab-based Docs / PDF / Chat navigation on mobile
+- **🗂️ Library management**: Upload, delete individual documents, or clear the whole library (files and chunks together)
+- **💾 Persistent chats**: Messages stored in SQLite and reloaded on refresh
 
 ---
 
@@ -31,85 +35,89 @@ PDFChat revolutionizes document interaction by enabling natural language convers
 
 ### High-Level Overview
 
-PDFChat Pro is a full-stack web application that combines modern frontend technologies with AI-powered backend services to enable conversational interactions with PDF documents. The system follows a client-server architecture with specialized components for document processing, vector search, and AI generation.
+A single Node process serves both the API and the React SPA. Vite runs in middleware mode, so development and "start" behave the same way — there is no separate frontend server to launch.
 
 ### Architecture Diagram
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   React UI      │    │   Express API   │    │   AI Services   │
-│   (Frontend)    │◄──►│   (Backend)     │◄──►│   (Gemini)      │
-│                 │    │                 │    │                 │
-│ - PDF Viewer    │    │ - Document Mgmt │    │ - Text Gen      │
-│ - Chat Interface│    │ - Vector Search │    │ - Embeddings    │
-│ - Upload Zone   │    │ - Chat History  │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │   Data Layer    │
-                    │                 │
-                    │ - SQLite DB     │
-                    │ - Vector Store  │
-                    │ - File Storage  │
-                    └─────────────────┘
+┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
+│   React UI      │    │   Express API        │    │   Gemini API    │
+│   (Vite SPA)    │◄──►│   (same Node process)│◄──►│   (text only)   │
+│                 │    │                      │    │                 │
+│ - PDF Viewer    │    │ - /api/upload        │    │ - Chat stream   │
+│ - Chat + SSE    │    │ - /api/chat (SSE)    │    │ - Summaries     │
+│ - Upload Zone   │    │ - /api/documents/*   │    │ - Suggestions   │
+│ - Summary modal │    │ - /api/chats/*       │    │                 │
+└─────────────────┘    └──────────┬───────────┘    └─────────────────┘
+                                  │
+                     ┌────────────────────────────┐
+                     │   Local (no external DB)  │
+                     │                            │
+                     │ - better-sqlite3          │
+                     │   documents / chunks /    │
+                     │   chats / messages        │
+                     │ - uploads/ (PDF files)    │
+                     │ - local hash embedding    │
+                     │   + hybrid scoring        │
+                     └────────────────────────────┘
 ```
 
 ### Component Breakdown
 
-#### Frontend Layer
+#### Frontend (`src/`)
 
-- **React Application**: Built with TypeScript and Vite for fast development and hot reloading
-- **PDF Rendering**: Client-side PDF display using React PDF with text highlighting capabilities
-- **Chat Interface**: Real-time messaging interface with Server-Sent Events streaming
-- **State Management**: Custom hooks managing chat state, document selection, and UI interactions
-- **Responsive Design**: Adaptive UI with dark/light themes and mobile optimization
+- **React 19 + TypeScript + Vite** — component architecture with hooks, no global state library
+- **PDF rendering** — `react-pdf` renders the uploaded file and highlights the cited sentence
+- **Chat interface** — reads the SSE stream with a `ReadableStream` reader, renders answers as Markdown (`react-markdown`)
+- **Layout** — three breakpoints: fixed sidebar + split view (desktop), drawer + split view (tablet), bottom-tab single panel (mobile)
+- **Theming** — token maps for light/dark applied with `clsx`, plus `data-theme` and `color-scheme` on `<html>`
 
-#### Backend Layer
+#### Backend (`server.ts`, `src/server/`)
 
-- **API Server**: Express.js handling RESTful endpoints and real-time streaming via SSE
-- **Document Ingestion Pipeline**: PDF parsing with PDF.js, fixed-size chunking with overlap, and lightweight local embedding generation in batches
-- **Vector Search Engine**: Custom hybrid search combining cosine similarity (40%) and keyword matching (60%)
-- **AI Orchestration**: Google Gemini API integration with retry logic and model selection (Flash/Pro)
-- **File Management**: Multer-based upload handling with generated filenames on local disk
-
-#### Data Layer
-
-- **SQLite Database**: Relational storage for documents, chunks, chats, and messages with foreign key relationships
-- **Vector Store**: SQLite-backed chunk retrieval scored on-the-fly with a hybrid of cosine similarity and keyword matching
-- **File Storage**: Local filesystem storage for uploaded PDFs with metadata preservation
+- **API server** — Express with JSON + CORS, Multer uploads, and SSE streaming for chat
+- **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, 1000/100 chunking, embedding generation, batch insert
+- **Retrieval** (`vector.ts`) — scans stored chunks, scores with hybrid similarity, applies a relevance gate, returns top-K
+- **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, source payloads
+- **Prompts** (`prompts.json`) — system instruction, summary format, and suggestion prompt kept out of the code
+- **Persistence** (`db.ts`) — `better-sqlite3`, synchronous prepared statements, tables auto-created on boot
 
 ### Data Flow Architecture
 
-#### Document Ingestion Pipeline
+#### Document Ingestion
 
 ```
-PDF Upload → Text Extraction → Chunking → Embedding Generation → Database Storage → Retrieval Ready
+PDF Upload → PDF.js text extraction (per page) → Chunking (1000 chars, 100 overlap)
+           → Hash embedding (768-dim) → SQLite insert (content, page, offsets, vector)
 ```
 
-#### Query Processing Pipeline
+Embeddings are computed **locally** — no embedding API is called during ingestion.
+
+#### Query Processing
 
 ```
-User Query → Query Embedding → Hybrid Vector Search → Context Retrieval → Prompt Assembly → AI Generation → Streaming Response → Citation Parsing → Source Attribution
+User query → Local hash embedding → Hybrid scoring (0.4·cosine + 0.6·keyword)
+           → Relevance gate → Top 5 chunks → Numbered context [1]…[5] in system instruction
+           → Gemini stream → SSE text frames → final sources frame
 ```
 
-#### Response Delivery Flow
+#### Response Delivery
 
 ```
-AI Response Stream → Token-by-Token Updates → Citation Detection → Source Validation → UI Highlighting → Chat Persistence
+Token frames ──────────────► streaming Markdown render
+Sources frame (post-stream) ► citation chips with confidence %
+                            ► click → PDF panel jumps to page + highlights sentence
 ```
 
 ### Key Design Decisions
 
-- **Hybrid Search Algorithm**: Combines vector similarity (embeddings) with exact keyword matching for optimal relevance
-- **Streaming Architecture**: Server-Sent Events enable real-time UI updates without WebSocket complexity
-- **Citation Validation**: Post-processing ensures only genuinely used sources are displayed with confidence scores
-- **Chunking Strategy**: 1000-character chunks with 100-character overlap preserve context across boundaries
-- **Batch Processing**: Embedding generation in batches of 5 prevents API rate limiting
-- **ACID Compliance**: SQLite ensures data integrity for chat history and document metadata
-
-This architecture provides a scalable, responsive platform for AI-powered document analysis while maintaining high accuracy in source attribution and user experience.
+- **Hybrid retrieval weighting** — keyword score is weighted 60% because the hash embedding captures character patterns, not semantics; keyword matching carries most of the retrieval signal
+- **Relevance gate** — a chunk must produce at least one keyword match and exceed a hybrid score of `0.15`, so weak matches never reach the model
+- **Positional keyword weighting** — earlier query words weigh more (`1/(i+1)`), so the first terms in a question dominate matching
+- **Citation parsing** — the model is asked to cite `[n]`; only those chunks are returned as sources, with the sentence best matching the question used as the preview
+- **Chunking** — 1000 characters with 100 characters of overlap, per page, retaining character offsets for locating text in the viewer
+- **Bounded concurrency** — chunks are embedded and inserted in batches of 5
+- **No external services** — storage, retrieval, and embeddings are all local, so the only network dependency is the Gemini API
+- **Retry policy** — 3 attempts with 3s/6s backoff for 429/503 and network-level errors; failures are surfaced to the UI as an SSE `error` frame
 
 ---
 
@@ -117,33 +125,40 @@ This architecture provides a scalable, responsive platform for AI-powered docume
 
 ### Frontend
 
-- **React 19** - Modern component architecture with hooks
-- **TypeScript** - Type-safe development
-- **Vite** - Lightning-fast build tool and dev server
-- **Tailwind CSS** - Utility-first styling with custom themes
-- **React PDF** - Client-side PDF rendering and interaction
-- **Lucide React** - Consistent iconography
+- **React 19** — component architecture with hooks
+- **TypeScript** — type-safe components and API layer
+- **Vite 6** — dev server in middleware mode + production bundler
+- **Tailwind CSS 4** — utility styling via `@tailwindcss/vite` (no `tailwind.config.js`)
+- **react-pdf** — client-side PDF rendering
+- **react-markdown** — Markdown rendering for streamed answers
+- **lucide-react** — icons
+- **clsx** — conditional class composition
 
 ### Backend
 
-- **Node.js** - Runtime environment
-- **Express.js** - RESTful API framework
-- **TypeScript** - Server-side type safety
-- **Better SQLite3** - Embedded database for metadata
-- **Multer** - File upload handling
+- **Node.js** (20.x / 22.x+) with **tsx** for TypeScript execution
+- **Express 4** — REST API + SSE
+- **better-sqlite3** — embedded database (`database.sqlite`)
+- **multer** — multipart PDF uploads to `uploads/`
+- **pdfjs-dist** (legacy build) — server-side text extraction
+- **@google/genai** — Gemini SDK for chat, summaries, and suggestions
+- **uuid** — document/chunk/message IDs
 
 ### AI & Data
 
-- **Google Gemini API** - Advanced language models (2.5 Flash/Pro)
-- **PDF.js** - PDF parsing and text extraction
-- **Custom Vector Store** - Semantic search implementation
-- **Custom Embedding** - Local hash-based text-to-vector conversion (768-dim) for similarity matching
+- **Google Gemini API** — `gemini-2.5-flash` (default) and `gemini-2.5-pro`
+- **Local hash embedding** — 768-dimension character-hash vectors, normalized (no external embedding provider)
+- **SQLite vector store** — embeddings stored as JSON in the `chunks` table and scored at query time
 
 ---
 
-## 📸 Screenshots / Demo
+## 📸 Screenshots
+
+Upload and chat:
 
 ![Upload and Chat Interface](screenshots/1.png)
+
+AI document summary:
 
 ![Summary View](screenshots/2_Summary.png)
 
@@ -153,47 +168,67 @@ This architecture provides a scalable, responsive platform for AI-powered docume
 
 ### Prerequisites
 
-- **Node.js** ≥18.0.0 (LTS recommended)
-- **Google Gemini API Key** (free tier available at [Google AI Studio](https://aistudio.google.com/app/apikey))
+- **Node.js ≥ 20** (20.19+ or 22.12+ recommended — required by `better-sqlite3` and `@vitejs/plugin-react`)
+- **npm**
+- **Google Gemini API key** — free tier at [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ### Quick Start
 
-1. **Clone and Navigate**
+1. **Clone and navigate**
 
    ```bash
    git clone <repository-url>
-   cd PDFCHAT
+   cd PDFChat
    ```
 
-2. **Install Dependencies**
+2. **Install dependencies**
 
    ```bash
    npm install
    ```
 
-3. **Configure Environment**
+3. **Configure environment**
 
    ```bash
-   # Create .env file in project root
-   echo "GEMINI_API_KEY=your_api_key_here" > .env
+   cp .env.example .env      # macOS / Linux
+   copy .env.example .env    # Windows PowerShell / CMD
    ```
 
-4. **Start Development Server**
+   Then edit `.env`:
+
+   ```env
+   GEMINI_API_KEY=your_api_key_here
+   # Optional: DISABLE_HMR=true to turn off Vite HMR
+   ```
+
+4. **Start the server**
 
    ```bash
    npm run dev
    ```
 
-5. **Access Application**
-   - Open [http://localhost:3000](http://localhost:3000) in your browser
-   - Upload a PDF and start chatting!
+5. **Open the app**
 
-### Production Deployment
+   Visit [http://localhost:3000](http://localhost:3000), upload a PDF, and start asking questions.
 
-```bash
-npm run build
-npm start
-```
+### npm Scripts
+
+| Script | Command | Notes |
+| --- | --- | --- |
+| `npm run dev` | `tsx server.ts` | Express API + Vite middleware, HMR enabled |
+| `npm run build` | `vite build` | Bundles the SPA into `dist/` |
+| `npm run lint` | `tsc --noEmit` | Type check only — no ESLint config in this repo |
+| `npm start` | `tsx server.ts` | Identical to `npm run dev`; Vite middleware is always used |
+| `npm run clean` | `rm -rf dist` | POSIX only |
+
+> **Note**: `npm start` currently boots the app in development mode (Vite in middleware mode) and does not serve the built `dist/` output. For a true production deploy, serve `dist/` from a static host or add a static-file branch to `server.ts` before running `npm run build && npm start`.
+
+### Runtime Artifacts
+
+These are created on first run and are git-ignored:
+
+- `database.sqlite` — documents, chunks, embeddings, chats, messages
+- `uploads/` — uploaded PDFs under generated UUID filenames
 
 ---
 
@@ -201,59 +236,94 @@ npm start
 
 ### Basic Workflow
 
-1. **Upload Document**: Drag & drop or select PDF files
-2. **Ask Questions**: Type natural language queries like "What are the main findings?" or "Explain the methodology on page 15"
-3. **Review Answers**: Read AI-generated responses with inline citations
-4. **Navigate Sources**: Click citations to jump to relevant PDF pages with highlighting
+1. **Upload** — drag & drop or select a PDF (PDF only). A summary is generated automatically and shown on completion.
+2. **Scope** — pick a document in the sidebar to query it alone, or use "All documents" to search across the library.
+3. **Ask** — type a question, or click one of the suggested follow-ups.
+4. **Verify** — read the answer and its citations; each chip shows a confidence score and the matched sentence.
+5. **Navigate** — click a citation to jump to that page in the PDF panel with the text highlighted.
 
-### Advanced Examples
+### Query Examples
 
-- **Comparative Analysis**: "Compare the approaches in chapters 3 and 5"
-- **Summarization**: "Summarize the key arguments against the proposed solution"
-- **Specific Queries**: "What evidence supports the hypothesis on page 12?"
-- **Cross-Document**: Switch to "All Documents" mode to query across multiple PDFs
+- **Summarization** — "Summarize the key arguments against the proposed solution"
+- **Cross-reference** — "Compare the approaches in chapters 3 and 5"
+- **Locate evidence** — "What evidence supports the hypothesis on page 12?"
+- **Cross-document** — in "All documents" mode: "Which documents mention the same methodology?"
 
 ### Model Selection
 
-- **Gemini 2.5 Flash**: Faster responses for general queries
-- **Gemini 2.5 Pro**: Deeper analysis for complex or technical content
+- **Gemini 2.5 Flash** (default) — fast, used for chat, summaries, and suggestions
+- **Gemini 2.5 Pro** — slower, deeper reasoning for complex or technical questions
+
+### API Reference
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/upload` | Multipart `file` upload; ingests and indexes the PDF |
+| `GET` | `/api/documents` | List indexed documents |
+| `GET` | `/api/documents/:id/content` | Stream the stored PDF |
+| `DELETE` | `/api/documents/:id` | Delete a document, its chunks, and its file |
+| `DELETE` | `/api/documents` | Delete all documents and uploaded files |
+| `POST` | `/api/chats` | Create a chat session |
+| `GET` | `/api/chats/:chatId` | Fetch message history for a chat |
+| `PATCH` | `/api/chats/:id/title` | Rename a chat |
+| `POST` | `/api/chat` | `{ message, chatId, mode, pdf_id?, model? }` → SSE stream of `text` frames then a `sources` frame |
+| `POST` | `/api/documents/:id/summary` | Generate a document summary |
+| `POST` | `/api/documents/:id/suggestions` | Generate validated follow-up questions |
+
+### Project Structure
+
+```
+.
+├── server.ts              # Express app, routes, Vite middleware
+├── src/
+│   ├── App.tsx            # Layout, theming, document/chat state
+│   ├── components/        # ChatInterface, PDFViewer, UploadZone, SummaryModal
+│   ├── hooks/useChat.ts   # SSE consumption, message state, suggestions
+│   ├── lib/api.ts         # Typed fetch wrappers
+│   └── server/            # db.ts, ingestion.ts, vector.ts, chat.ts, prompts.json
+├── database.sqlite        # Generated
+├── uploads/               # Generated
+└── .env.example
+```
 
 ---
 
 ## 🚧 Challenges & Learnings
 
-**PDF Processing Complexity**: Implementing robust text extraction from diverse PDF formats required deep integration with PDF.js, handling encrypted documents, and managing memory efficiently during large file processing.
+**PDF text extraction**: Text layer quality varies widely across PDFs (scans, broken encodings, multi-column layouts). The extractor joins PDF.js text items with spaces, which is reliable for born-digital documents but degrades on scanned ones — OCR would be the next step.
 
-**Vector Search Optimization**: Balancing embedding quality with query performance involved custom chunking strategies, batch processing to respect API limits, and implementing hybrid search algorithms that combine semantic similarity with keyword matching.
+**Retrieval without a real embedding model**: The local 768-dim character-hash vector captures surface character patterns, not meaning. It is fast and dependency-free, but it cannot match synonyms or paraphrase, which is exactly why keyword matching is weighted more heavily in the hybrid score.
 
-**Streaming Response Architecture**: Building reliable real-time AI responses demanded careful error handling, retry logic for API failures, and efficient state management to prevent UI blocking during long generations.
+**Relevance gating matters**: Returning the top-5 chunks unconditionally injected unrelated context into prompts. Requiring a keyword hit and a minimum hybrid score measurably reduced off-topic answers.
 
-**Citation Accuracy**: Developing precise source attribution involved parsing AI responses for citation markers, mapping back to original chunks, and implementing confidence scoring for result validation.
+**Citation integrity**: Trusting retrieved chunks as "sources" produced false attributions. Parsing `[n]` markers out of the model's own response and returning only those chunks keeps citations honest.
 
-**Scalability Considerations**: Designing the system to handle multiple concurrent users while maintaining response times required thoughtful database indexing, connection pooling, and background processing for document ingestion.
+**Streaming resilience**: Transient 503/429 responses and dropped connections are common with the Gemini API. Retrying with backoff and forwarding errors as an SSE `error` frame keeps the UI responsive instead of hanging on a spinner.
+
+**Full-scan retrieval**: Chunks are loaded and scored on every query, which is fine for a personal library but does not scale — an approximate nearest-neighbour index would be required for large collections.
 
 ---
 
 ## 🔮 Future Improvements
 
-**Multi-Modal Integration**: Extend beyond text to support images, charts, and tables within PDFs using vision-language models for comprehensive document understanding.
+**Real embeddings**: Swap the local hash embedding for a hosted embedding model (Gemini, Vertex AI, or a local sentence-transformer) to capture semantic similarity.
 
-**Advanced RAG Pipeline**: Implement retrieval-augmented generation with hierarchical chunking, query expansion, and multi-stage reasoning for more nuanced responses.
+**ANN vector index**: Move from full-table scans to an approximate nearest-neighbour index (e.g. sqlite-vec or a dedicated vector DB) for large libraries.
 
-**Collaborative Features**: Add real-time multi-user sessions, shared document workspaces, and annotation capabilities for team collaboration.
+**Multi-modal ingestion**: Extract and describe images, charts, and tables via vision-language models.
 
-**Enterprise Security**: Integrate document access controls, audit logging, and compliance features for organizational deployment.
+**Richer context assembly**: Hierarchical chunking, query expansion, and multi-stage retrieval for long documents.
 
-**Performance Optimization**: Implement caching layers, distributed vector databases, and GPU acceleration for handling larger document collections at scale.
+**Conversation memory**: Feed prior turns into the prompt and let follow-up questions resolve pronouns and references against earlier context.
+
+**Collaborative features**: Multi-user sessions, shared document workspaces, and annotations.
+
+**Security & hardening**: Auth, per-document access control, upload size/type validation, rate limiting, and audit logging.
 
 ---
 
 ## 👨‍💻 Author
 
-Full-Stack Developer passionate about AI-powered applications and developer experience.
+Full-stack developer focused on AI-powered applications and developer experience.
 
-_Built with modern web technologies and cutting-edge AI to demonstrate practical implementation of retrieval-augmented generation systems._
-
----
-
-_This project showcases advanced concepts in AI integration, vector databases, and real-time web applications. Open to feedback and collaboration opportunities._
+_Built to demonstrate a practical retrieval-augmented generation pipeline: ingestion, hybrid retrieval, grounded generation, and verifiable citations._
