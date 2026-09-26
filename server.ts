@@ -5,7 +5,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
-import cors from 'cors';
 
 import { db } from './src/server/db';
 import { ingestionService } from './src/server/ingestion';
@@ -25,7 +24,6 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
-  app.use(cors());
 
   // API Routes
   

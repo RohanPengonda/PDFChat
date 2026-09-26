@@ -142,12 +142,7 @@ export default function App() {
     docSelected: "bg-[#d4c9b8] text-[#2c2416] font-semibold",
     docBadge: "bg-[#c8bfb0] text-[#5a4e3c]",
     border: "border-[#d8d0c4]",
-    input: "bg-[#ede8e0] border-[#c8bfb0]",
-    userBubble: "bg-[#b5651d] text-white",
-    aiBubble: "bg-white text-[#2c2416] border border-[#e0d8cc]",
     sourceLink: "text-[#b5651d]",
-    divider: "bg-[#d8d0c4]",
-    uploadBtn: "bg-[#b5651d] hover:bg-[#9e5519] text-white",
     modelBg: "bg-[#e4ddd4] border-[#c8bfb0]",
   };
   const D = {
@@ -162,12 +157,7 @@ export default function App() {
     docSelected: "bg-[#2a3550] text-white font-semibold",
     docBadge: "bg-[#2d3548] text-[#6b7a99]",
     border: "border-[#2d3548]",
-    input: "bg-[#1e2433] border-[#2d3548]",
-    userBubble: "bg-[#2979ff] text-white",
-    aiBubble: "bg-[#252d40] text-[#e8eaf0] border border-[#2d3548]",
     sourceLink: "text-[#5b9cf6]",
-    divider: "bg-[#2d3548]",
-    uploadBtn: "bg-[#2979ff] hover:bg-[#1565c0] text-white",
     modelBg: "bg-[#252d40] border-[#2d3548]",
   };
   const T = isDark ? D : L;
@@ -320,8 +310,6 @@ export default function App() {
             </ul>
           )}
         </div>
-
-        {/* Divider and Chats section removed - single chat session */}
       </div>
     </div>
   );
@@ -336,7 +324,6 @@ export default function App() {
       }
       onSourceClick={handleSourceClick}
       isDark={isDark}
-      // onToggleTheme={() => setIsDark(!isDark)}
       chatId={chatId}
       suggestions={suggestions}
       onSuggestionClick={(q) => {
@@ -377,12 +364,6 @@ export default function App() {
         }
       }}
       isLoadingSummary={summaryLoadingId === selectedDocId}
-      docName={
-        selectedDocId
-          ? documents.find((d) => d.id === selectedDocId)?.original_name ||
-            "Document"
-          : "Document"
-      }
     />
   );
 

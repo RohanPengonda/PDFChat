@@ -1,7 +1,6 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
-import { vectorStore } from './vector';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export const ingestionService = {
@@ -40,20 +39,6 @@ export const ingestionService = {
               chunk.charStartPos,
               chunk.charEndPos
             );
-
-            // Store in Vector DB
-            await vectorStore.addVectors([{
-              id: chunkId,
-              values: embedding,
-              metadata: {
-                pdf_id: documentId,
-                file_name: file.originalname,
-                page_number: chunk.pageNumber,
-                text: chunk.text,
-                char_start_pos: chunk.charStartPos,
-                char_end_pos: chunk.charEndPos
-              }
-            }]);
         } catch (e) {
             console.error(`Failed to process chunk ${chunk.chunkIndex} for doc ${documentId}`, e);
         }

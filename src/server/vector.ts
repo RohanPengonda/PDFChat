@@ -1,28 +1,15 @@
 import { db } from './db';
 
 export interface VectorStore {
-  addVectors(vectors: { id: string; values: number[]; metadata: any }[]): Promise<void>;
   query(vector: number[], topK: number, filter?: any): Promise<{ id: string; score: number; metadata: any }[]>;
 }
 
 // Local in-memory / SQLite-based vector store for preview
 class LocalVectorStore implements VectorStore {
-  async addVectors(vectors: { id: string; values: number[]; metadata: any }[]): Promise<void> {
-    // In this local implementation, vectors are already stored in SQLite 'chunks' table by the ingestion service
-    // We don't need to do anything extra here if we just scan the DB for queries.
-    // However, to be cleaner, we could store them in a separate in-memory structure if performance was key.
-    // For now, we'll rely on the DB having them.
-    return;
-  }
-
   async query(vector: number[], topK: number, filter?: any): Promise<{ id: string; score: number; metadata: any }[]> {
     // 1. Fetch all chunks from DB
     let chunks = db.getAllChunks();
 
-    if (filter && filter.pdf_id) {
-      chunks = chunks.filter((c: any) => c.document_id === filter.pdf_id);
-    }
-    
     if (filter && filter.pdf_ids && Array.isArray(filter.pdf_ids)) {
         chunks = chunks.filter((c: any) => filter.pdf_ids.includes(c.document_id));
     }

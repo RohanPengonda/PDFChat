@@ -14,7 +14,6 @@ interface PDFViewerProps {
   isDark?: boolean;
   onSummaryClick?: () => void;
   isLoadingSummary?: boolean;
-  docName?: string;
 }
 
 export function PDFViewer({
@@ -24,7 +23,6 @@ export function PDFViewer({
   isDark = true,
   onSummaryClick,
   isLoadingSummary = false,
-  docName = "Document",
 }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(pageNumber);
