@@ -4,48 +4,52 @@ import { db } from './db';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export const ingestionService = {
-  async processDocument(file: Express.Multer.File): Promise<string> {
+  async processDocument(file: Express.Multer.File, userId?: string): Promise<string> {
     const documentId = uuidv4();
     const filePath = file.path;
 
-    // 1. Store metadata in DB
-    db.createDocument(documentId, file.filename, file.originalname);
+    try {
+      // 1. Store metadata in DB
+      db.createDocument(documentId, file.filename, file.originalname, userId);
 
-    // 2. Extract Text
-    const pages = await this.extractTextFromPDF(filePath);
+      // 2. Extract Text
+      const pages = await this.extractTextFromPDF(filePath);
 
-    // 3. Chunk Text
-    const chunks = this.chunkPages(pages);
+      // 3. Chunk Text
+      const chunks = this.chunkPages(pages);
 
-    // 4. Generate Embeddings & Store
-    // Process in batches to avoid hitting API limits
-    const BATCH_SIZE = 5; // Reduced batch size
-    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-      const batch = chunks.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(async (chunk) => {
-        try {
-            const embedding = await this.generateEmbedding(chunk.text);
-            
-            const chunkId = uuidv4();
-            
-            // Store in SQL DB with character positions
-            db.createChunk(
-              chunkId, 
-              documentId, 
-              chunk.text, 
-              chunk.pageNumber, 
-              chunk.chunkIndex, 
-              embedding,
-              chunk.charStartPos,
-              chunk.charEndPos
-            );
-        } catch (e) {
-            console.error(`Failed to process chunk ${chunk.chunkIndex} for doc ${documentId}`, e);
+      // 4. Generate Embeddings & Store (atomic per chunk insert; rollback on full failure)
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+        const batch = chunks.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (chunk) => {
+          const embedding = await this.generateEmbedding(chunk.text);
+          const chunkId = uuidv4();
+          db.createChunk(
+            chunkId,
+            documentId,
+            chunk.text,
+            chunk.pageNumber,
+            chunk.chunkIndex,
+            embedding,
+            chunk.charStartPos,
+            chunk.charEndPos
+          );
+        }));
+      }
+
+      return documentId;
+    } catch (e: any) {
+      try {
+        db.deleteDocument(documentId);
+      } catch {}
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
         }
-      }));
+      } catch {}
+      throw e;
     }
-
-    return documentId;
   },
 
   async extractTextFromPDF(filePath: string): Promise<{ pageNumber: number; text: string }[]> {

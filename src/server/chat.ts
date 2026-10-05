@@ -7,8 +7,14 @@ import prompts from './prompts.json';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const chatService = {
-  async generateResponse(message: string, chatId: string, mode: 'single' | 'all', pdf_id: string | undefined, res: Response, model?: string) {
+  async generateResponse(message: string, chatId: string, mode: 'single' | 'all', pdf_id: string | undefined, res: Response, model?: string, userId?: string) {
     // 1. Save User Message
+    const chat = db.getChat(chatId, userId);
+    if (!chat) {
+      res.write(`data: ${JSON.stringify({ error: 'Chat not found or access denied' })}\n\n`);
+      res.end();
+      return;
+    }
     db.addMessage(chatId, 'user', message);
 
     // 2. Generate Embedding for Query

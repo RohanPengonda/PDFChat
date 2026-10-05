@@ -25,27 +25,52 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Simple auth middleware (optional token-based). If AUTH_TOKEN not set, allow all (dev-only).
+  const AUTH_TOKEN = process.env.AUTH_TOKEN;
+  const authRequired = !!AUTH_TOKEN;
+  app.use((req, res, next) => {
+    if (!authRequired) {
+      (req as any).userId = req.headers['x-user-id'] as string | undefined;
+      return next();
+    }
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '') || (req.headers['x-api-token'] as string);
+    if (token === AUTH_TOKEN) {
+      (req as any).userId = req.headers['x-user-id'] as string | undefined;
+      return next();
+    }
+    res.status(401).json({ error: 'Unauthorized' });
+  });
   // API Routes
   
   // 1. Upload PDF
-  app.post('/api/upload', upload.single('file'), async (req, res) => {
+  const pdfFilter = (req: any, file: any, cb: any) => {
+    if (!file.mimetype || file.mimetype !== 'application/pdf') {
+      return cb(new Error('Only PDF files are allowed'));
+    }
+    cb(null, true);
+  };
+  const uploadSafe = multer({ dest: uploadDir, fileFilter: pdfFilter, limits: { fileSize: 50 * 1024 * 1024 } });
+  app.post('/api/upload', uploadSafe.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
-      const documentId = await ingestionService.processDocument(req.file);
+      const userId = (req as any).userId;
+      const documentId = await ingestionService.processDocument(req.file, userId);
       res.json({ id: documentId, filename: req.file.originalname });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
-      res.status(500).json({ error: 'Failed to process document' });
+      const msg = error?.message || 'Failed to process document';
+      res.status(500).json({ error: msg });
     }
   });
 
   // 2. List Documents
   app.get('/api/documents', async (req, res) => {
     try {
-      const docs = await db.getDocuments();
+      const userId = (req as any).userId;
+      const docs = await db.getDocuments(userId);
       res.json(docs);
     } catch (error) {
       console.error('List documents error:', error);
@@ -56,7 +81,8 @@ async function startServer() {
   // 3. Create Chat
   app.post('/api/chats', async (req, res) => {
     try {
-      const chatId = await db.createChat();
+      const userId = (req as any).userId;
+      const chatId = await db.createChat(userId);
       res.json({ id: chatId });
     } catch (error) {
       console.error('Create chat error:', error);
@@ -67,7 +93,8 @@ async function startServer() {
   // 4. Get Chat History
   app.get('/api/chats/:chatId', async (req, res) => {
     try {
-        const messages = await db.getMessages(req.params.chatId);
+        const userId = (req as any).userId;
+        const messages = await db.getMessages(req.params.chatId, userId);
         res.json(messages);
     } catch (error) {
         console.error('Get chat history error:', error);
@@ -89,7 +116,8 @@ async function startServer() {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      await chatService.generateResponse(message, chatId, mode, pdf_id, res, model);
+      const userId = (req as any).userId;
+      await chatService.generateResponse(message, chatId, mode, pdf_id, res, model, userId);
       
       // End response is handled in generateResponse or here if it returns
     } catch (error) {
@@ -106,11 +134,12 @@ async function startServer() {
   // 6. Serve PDF file content
   app.get('/api/documents/:id/content', async (req, res) => {
       try {
-          const doc = await db.getDocument(req.params.id) as { filename: string } | undefined;
+          const userId = (req as any).userId;
+          const doc = await db.getDocument(req.params.id, userId) as { filename: string } | undefined;
           if (!doc) {
-              return res.status(404).json({ error: 'Document not found' });
+              return res.status(404).json({ error: 'Document not found or access denied' });
           }
-          const filePath = path.join(uploadDir, doc.filename); // filename is the stored filename (uuid)
+          const filePath = path.join(uploadDir, doc.filename);
           if (!fs.existsSync(filePath)) {
                return res.status(404).json({ error: 'File not found on disk' });
           }
@@ -124,14 +153,15 @@ async function startServer() {
   // 7. Delete document
   app.delete('/api/documents/:id', async (req, res) => {
     try {
-      const doc = await db.getDocument(req.params.id) as { filename: string } | undefined;
+      const userId = (req as any).userId;
+      const doc = await db.getDocument(req.params.id, userId) as { filename: string } | undefined;
       if (doc) {
         const filePath = path.join(uploadDir, doc.filename);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
       }
-      db.deleteDocument(req.params.id);
+      db.deleteDocument(req.params.id, userId);
       res.json({ success: true });
     } catch (error) {
       console.error('Delete document error:', error);
@@ -142,6 +172,7 @@ async function startServer() {
   // 8. Clear all documents
   app.delete('/api/documents', async (req, res) => {
     try {
+      const userId = (req as any).userId;
       const files = fs.readdirSync(uploadDir);
       files.forEach(file => {
         const filePath = path.join(uploadDir, file);
@@ -149,7 +180,7 @@ async function startServer() {
           fs.unlinkSync(filePath);
         }
       });
-      db.clearAllDocuments();
+      db.clearAllDocuments(userId);
       res.json({ success: true });
     } catch (error) {
       console.error('Clear documents error:', error);
@@ -162,7 +193,8 @@ async function startServer() {
     try {
       const { title } = req.body;
       if (!title) return res.status(400).json({ error: 'Title required' });
-      db.updateChatTitle(req.params.id, title);
+      const userId = (req as any).userId;
+      db.updateChatTitle(req.params.id, title, userId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: 'Failed to update title' });
@@ -172,6 +204,9 @@ async function startServer() {
   // 10. Generate document summary
   app.post('/api/documents/:id/summary', async (req, res) => {
     try {
+      const userId = (req as any).userId;
+      const doc = await db.getDocument(req.params.id, userId);
+      if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
       const summary = await chatService.generateSummary(req.params.id);
       res.json({ summary });
     } catch (error) {
@@ -184,6 +219,9 @@ async function startServer() {
   app.post('/api/documents/:id/suggestions', async (req, res) => {
     try {
       const { lastQuestion } = req.body;
+      const userId = (req as any).userId;
+      const doc = await db.getDocument(req.params.id, userId);
+      if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
       const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '');
       res.json({ suggestions });
     } catch (error) {
