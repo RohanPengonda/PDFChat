@@ -86,7 +86,11 @@ export const db = {
     stmt.run(id, documentId, content, pageNumber, chunkIndex, charStartPos || 0, charEndPos || content.length, JSON.stringify(embedding));
   },
 
-  getAllChunks: () => {
+  getAllChunks: (documentId?: string) => {
+    if (documentId) {
+      const chunks = sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id = ?').all(documentId);
+      return chunks.map((c: any) => ({ ...c, embedding: JSON.parse(c.embedding) }));
+    }
     const chunks = sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id').all();
     return chunks.map((c: any) => ({ ...c, embedding: JSON.parse(c.embedding) }));
   },

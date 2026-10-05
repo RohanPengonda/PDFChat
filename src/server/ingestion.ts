@@ -112,7 +112,7 @@ export const ingestionService = {
   async generateEmbedding(text: string): Promise<number[]> {
     // Simple embedding using character-based hashing (768 dimensions)
     const embedding = new Array(768).fill(0);
-    const words = text.toLowerCase().split(/\s+/).slice(0, 100);
+    const words = (text || '').toLowerCase().split(/\s+/).slice(0, 100);
     
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
@@ -123,8 +123,8 @@ export const ingestionService = {
       }
     }
     
-    // Normalize
     const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    return embedding.map(val => magnitude > 0 ? val / magnitude : 0);
+    if (magnitude === 0) return new Array(768).fill(0);
+    return embedding.map(val => val / magnitude);
   }
 };

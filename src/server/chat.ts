@@ -8,14 +8,13 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const chatService = {
   async generateResponse(message: string, chatId: string, mode: 'single' | 'all', pdf_id: string | undefined, res: Response, model?: string, userId?: string) {
-    // 1. Save User Message
+    // 1. Validate chat and ownership (do not save user message yet for consistency)
     const chat = db.getChat(chatId, userId);
     if (!chat) {
       res.write(`data: ${JSON.stringify({ error: 'Chat not found or access denied' })}\n\n`);
       res.end();
       return;
     }
-    db.addMessage(chatId, 'user', message);
 
     // 2. Generate Embedding for Query
     const queryVector = await this.generateEmbedding(message);
@@ -95,7 +94,8 @@ ${numberedContext}
       return;
     }
 
-    // 6. Save Assistant Message
+    // 6. Save User and Assistant Messages (full turn)
+    db.addMessage(chatId, 'user', message);
     db.addMessage(chatId, 'assistant', fullResponse);
     
     // 7. Send Citations - only include chunks actually cited in the response
@@ -149,44 +149,58 @@ ${numberedContext}
   },
 
   async generateSuggestions(documentId: string, lastQuestion: string): Promise<string[]> {
-    const allChunks = db.getAllChunks().filter((c: any) => c.document_id === documentId);
+    const allChunks = (db.getAllChunks(documentId) as any[]);
     if (allChunks.length === 0) return [];
 
-    // Sample chunks spread across the whole document, not just the first 4
     const step = Math.max(1, Math.floor(allChunks.length / 6));
     const sampledChunks = allChunks.filter((_: any, i: number) => i % step === 0).slice(0, 6);
     const sampleText = sampledChunks.map((c: any) => c.content).join('\n\n');
 
     const prompt = `${prompts.suggestions.prompt}\n\nDocument content:\n${sampleText}\n\nLast question asked: "${lastQuestion}"`;
 
-    try {
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      });
-      const raw = result.text || (result as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-      const cleaned = raw.trim().replace(/^```json\n?|^```\n?|\n?```$/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-      const candidates: string[] = Array.isArray(parsed) ? parsed.slice(0, 6) : [];
-
-      // Validate each question — only keep ones that have retrievable content
-      const validated: string[] = [];
-      for (const question of candidates) {
-        if (validated.length >= 3) break;
-        const qVector = await this.generateEmbedding(question);
-        const chunks = await vectorStore.query(qVector, 1, { pdf_ids: [documentId], query: question });
-        if (chunks.length > 0) {
-          validated.push(question);
+    let retries = 2;
+    while (retries >= 0) {
+      try {
+        const result = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
+        const raw = result.text || (result as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+        const cleaned = raw.trim().replace(/^```json\n?|^```\n?|\n?```$/g, '').trim();
+        let parsed: any;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (e) {
+          console.error('Suggestions JSON parse error:', (e as any)?.message);
+          return [];
         }
+        const candidates: string[] = Array.isArray(parsed) ? parsed.slice(0, 6) : [];
+
+        const validated: string[] = [];
+        for (const question of candidates) {
+          if (validated.length >= 3) break;
+          const qVector = await this.generateEmbedding(question);
+          const chunks = await vectorStore.query(qVector, 1, { pdf_ids: [documentId], query: question });
+          if (chunks.length > 0) {
+            validated.push(question);
+          }
+        }
+        return validated;
+      } catch (error: any) {
+        if ((error.status === 503 || error.status === 429) && retries > 0) {
+          retries--;
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        console.error('Suggestions generation error:', error?.message || error);
+        return [];
       }
-      return validated;
-    } catch {
-      return [];
     }
+    return [];
   },
 
   async generateSummary(documentId: string): Promise<string> {
-    const allChunks = db.getAllChunks().filter((c: any) => c.document_id === documentId);
+    const allChunks = (db.getAllChunks(documentId) as any[]);
     if (allChunks.length === 0) return 'No content found in this document.';
     const sampleChunks = allChunks.slice(0, 6).map((c: any) => c.content).join('\n\n');
 
@@ -197,6 +211,15 @@ ${prompts.summary.format}
 Document text:
 ${sampleChunks}`;
 
+    const isRetryable = (e: any): boolean => {
+      if (e?.status === 503 || e?.status === 429) return true;
+      if (e?.status === undefined) {
+        const msg = `${e?.message || ''} ${e?.cause?.message || ''}`;
+        return /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(msg);
+      }
+      return false;
+    };
+
     let retries = 3;
     while (retries > 0) {
       try {
@@ -204,14 +227,12 @@ ${sampleChunks}`;
           model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
-        // @google/genai returns text via result.text property
         const text = result.text;
         if (text) return text;
-        // fallback: dig into candidates
         const candidate = (result as any)?.candidates?.[0];
         return candidate?.content?.parts?.[0]?.text || 'Could not generate summary.';
       } catch (error: any) {
-        if ((error.status === 503 || error.status === 429) && retries > 1) {
+        if (isRetryable(error) && retries > 1) {
           retries--;
           await new Promise(r => setTimeout(r, 3000));
         } else {
@@ -225,7 +246,7 @@ ${sampleChunks}`;
 
   async generateEmbedding(text: string): Promise<number[]> {
     const embedding = new Array(768).fill(0);
-    const words = text.toLowerCase().split(/\s+/).slice(0, 100);
+    const words = (text || '').toLowerCase().split(/\s+/).slice(0, 100);
     
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
@@ -237,6 +258,7 @@ ${sampleChunks}`;
     }
     
     const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    return embedding.map(val => magnitude > 0 ? val / magnitude : 0);
+    if (magnitude === 0) return new Array(768).fill(0);
+    return embedding.map(val => val / magnitude);
   }
 };

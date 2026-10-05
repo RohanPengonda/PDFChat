@@ -20,6 +20,11 @@ if (!fs.existsSync(uploadDir)) {
 const upload = multer({ dest: uploadDir });
 
 async function startServer() {
+  if (!process.env.GEMINI_API_KEY) {
+    console.error('Error: GEMINI_API_KEY is required. Set it in .env');
+    process.exit(1);
+  }
+
   const app = express();
   const PORT = 3000;
 
