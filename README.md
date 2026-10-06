@@ -28,6 +28,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **📱 Adaptive UI**: Light/dark themes, sidebar drawer on tablet, tab-based Docs / PDF / Chat navigation on mobile
 - **🗂️ Library management**: Upload, delete individual documents, or clear the whole library (files and chunks together)
 - **💾 Persistent chats**: Messages stored in SQLite and reloaded on refresh
+- **🔐 Optional authentication**: Token-based auth via `AUTH_TOKEN` for multi-user scenarios (user-scoped documents/chats)
 
 ---
 
@@ -79,14 +80,14 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 - **Retrieval** (`vector.ts`) — scans stored chunks, scores with hybrid similarity, applies a relevance gate, returns top-K
 - **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, source payloads
 - **Prompts** (`prompts.json`) — system instruction, summary format, and suggestion prompt kept out of the code
-- **Persistence** (`db.ts`) — `better-sqlite3`, synchronous prepared statements, tables auto-created on boot
+- **Persistence** (`db.ts`) — `better-sqlite3`, synchronous prepared statements, tables auto-created on boot, user-scoped data when auth enabled
 
 ### Data Flow Architecture
 
 #### Document Ingestion
 
 ```
-PDF Upload → PDF.js text extraction (per page) → Chunking (1000 chars, 100 overlap)
+PDF Upload (PDF-only, 50MB limit) → PDF.js text extraction (per page) → Chunking (1000 chars, 100 overlap)
            → Hash embedding (768-dim) → SQLite insert (content, page, offsets, vector)
 ```
 
@@ -197,9 +198,10 @@ AI document summary:
    Then edit `.env`:
 
    ```env
-   GEMINI_API_KEY=your_api_key_here
-   # Optional: DISABLE_HMR=true to turn off Vite HMR
-   ```
+    GEMINI_API_KEY=your_api_key_here
+    # Optional: DISABLE_HMR=true to turn off Vite HMR
+    # Optional: AUTH_TOKEN=your_secret_token for multi-user auth
+    ```
 
 4. **Start the server**
 
@@ -258,7 +260,7 @@ These are created on first run and are git-ignored:
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/api/upload` | Multipart `file` upload; ingests and indexes the PDF |
+| `POST` | `/api/upload` | Multipart `file` upload (PDF-only, 50MB); ingests and indexes the PDF. Protected if auth enabled. |
 | `GET` | `/api/documents` | List indexed documents |
 | `GET` | `/api/documents/:id/content` | Stream the stored PDF |
 | `DELETE` | `/api/documents/:id` | Delete a document, its chunks, and its file |
@@ -318,7 +320,7 @@ These are created on first run and are git-ignored:
 
 **Collaborative features**: Multi-user sessions, shared document workspaces, and annotations.
 
-**Security & hardening**: Auth, per-document access control, upload size/type validation, rate limiting, and audit logging.
+**Security & hardening**: Enhanced auth flows, rate limiting, and audit logging.
 
 ---
 
