@@ -5,18 +5,7 @@ import path from 'path';
 // Initialize DB
 const dbPath = path.resolve('database.sqlite');
 const sqlite = new Database(dbPath);
-try {
-  sqlite.pragma('foreign_keys = ON');
-  // Add indexes for common lookups
-  sqlite.exec(`
-    CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
-    CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
-    CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
-    CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
-  `);
-} catch (e) {
-  // ignore index creation errors in case of existing schema
-}
+sqlite.pragma('foreign_keys = ON');
 
 // Create tables
 sqlite.exec(`
@@ -56,6 +45,25 @@ sqlite.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(chat_id) REFERENCES chats(id) ON DELETE CASCADE
   );
+`);
+
+// Migrate databases created before a column existed (CREATE TABLE IF NOT EXISTS
+// never alters an existing table).
+const ensureColumn = (table: string, column: string, ddl: string) => {
+  const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+};
+ensureColumn('documents', 'user_id', 'TEXT');
+ensureColumn('chats', 'user_id', 'TEXT');
+
+// Indexes must be created after tables (and migrated columns) exist
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+  CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+  CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
 `);
 
 export const db = {
@@ -108,13 +116,6 @@ export const db = {
       return sqlite.prepare('SELECT * FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId);
     }
     return sqlite.prepare('SELECT * FROM chats WHERE id = ?').get(id);
-  },
-
-  getChats: (userId?: string) => {
-    if (userId) {
-      return sqlite.prepare('SELECT * FROM chats WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC').all(userId);
-    }
-    return sqlite.prepare('SELECT * FROM chats ORDER BY created_at DESC').all();
   },
 
   // Update chat title

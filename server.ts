@@ -17,8 +17,6 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-const upload = multer({ dest: uploadDir });
-
 async function startServer() {
   if (!process.env.GEMINI_API_KEY) {
     console.error('Error: GEMINI_API_KEY is required. Set it in .env');
@@ -48,7 +46,7 @@ async function startServer() {
   // API Routes
   
   // 1. Upload PDF
-  const pdfFilter = (req: any, file: any, cb: any) => {
+  const pdfFilter = (_req: any, file: any, cb: any) => {
     if (!file.mimetype || file.mimetype !== 'application/pdf') {
       return cb(new Error('Only PDF files are allowed'));
     }

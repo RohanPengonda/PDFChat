@@ -5,13 +5,8 @@ export interface Source {
   file_name: string;
   pdf_id: string;
   page_number: number;
-  chunk_id: string;
   text: string;
-  preview?: string;
   confidence?: number;
-  char_start_pos?: number;
-  char_end_pos?: number;
-  citation_number?: number;
 }
 
 export interface Message {

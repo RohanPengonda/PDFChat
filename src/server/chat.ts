@@ -113,10 +113,9 @@ ${numberedContext}
       : relevantChunks;
 
     const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    const sortedCitedNumbers = [...citedNumbers].sort((a, b) => a - b);
 
     const sources = chunksToShow
-      .map((c, idx) => {
+      .map((c) => {
         const chunkText = c.metadata.text;
 
         const sentences = chunkText.split(/(?<=[.!?])\s+/).filter((s: string) => s.trim().length > 10);
@@ -132,13 +131,10 @@ ${numberedContext}
         if (citedNumbers.size === 0 && bestScore === 0) return null;
 
         return {
-          citation_number: citedNumbers.size > 0 ? sortedCitedNumbers[idx] : idx + 1,
           file_name: c.metadata.file_name,
           pdf_id: c.metadata.pdf_id,
           page_number: c.metadata.page_number,
-          chunk_id: c.id,
           text: bestSentence.trim(),
-          preview: bestSentence.trim(),
           confidence: Math.round(c.score * 100)
         };
       })

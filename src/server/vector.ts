@@ -33,7 +33,6 @@ class LocalVectorStore implements VectorStore {
           page_number: chunk.page_number,
           pdf_id: chunk.document_id,
           file_name: chunk.file_name,
-          chunk_index: chunk.chunk_index,
           keyword_score: Math.round(keywordScore * 100)
         }
       };
