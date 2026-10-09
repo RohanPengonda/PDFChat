@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Copy, Check, ArrowUpRight } from "lucide-react";
+import { Send, Loader2, Copy, Check, ArrowUpRight, Plus } from "lucide-react";
 import { Message, Source } from "../hooks/useChat";
 import ReactMarkdown from "react-markdown";
 import { clsx } from "clsx";
@@ -19,6 +19,7 @@ interface ChatInterfaceProps {
   onModeChange: (mode: "single" | "all") => void;
   documents: { id: string; filename: string; original_name: string }[];
   selectedDocId: string | null;
+  onNewChat?: () => void;
 }
 
 export function ChatInterface({
@@ -35,6 +36,7 @@ export function ChatInterface({
   onModeChange,
   documents,
   selectedDocId,
+  onNewChat,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -114,6 +116,19 @@ export function ChatInterface({
         >
           Chat
         </span>
+        {onNewChat && (
+          <button
+            onClick={onNewChat}
+            className={clsx(
+              "flex items-center gap-1 text-[11px] font-medium rounded-lg px-2 py-1 transition-opacity hover:opacity-70",
+              sourceLink,
+            )}
+            title="Start a new chat"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New
+          </button>
+        )}
       </div>
 
       {/* Messages */}

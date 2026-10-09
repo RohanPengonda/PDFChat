@@ -24,14 +24,12 @@ export function useChat(chatId: string | null) {
 
   useEffect(() => {
     if (chatId) {
-      api.getChatHistory(chatId).then((msgs: any) => {
-          // Transform DB messages to UI messages
-          const uiMsgs = msgs.map((m: any) => ({
+      api.getChatHistory(chatId).then((msgs) => {
+          const uiMsgs = (msgs as Message[]).map((m) => ({
               id: m.id,
               role: m.role,
               content: m.content,
-              // Sources are not stored in DB in this simple schema, but could be added to metadata column
-              // For now, history won't show sources, only new messages
+              sources: m.sources,
           }));
           setMessages(uiMsgs);
       }).catch(console.error);

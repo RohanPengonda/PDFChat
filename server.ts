@@ -33,12 +33,12 @@ async function startServer() {
   const authRequired = !!AUTH_TOKEN;
   app.use((req, res, next) => {
     if (!authRequired) {
-      (req as any).userId = req.headers['x-user-id'] as string | undefined;
+      req.userId = req.headers['x-user-id'] as string | undefined;
       return next();
     }
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '') || (req.headers['x-api-token'] as string);
     if (token === AUTH_TOKEN) {
-      (req as any).userId = req.headers['x-user-id'] as string | undefined;
+      req.userId = req.headers['x-user-id'] as string | undefined;
       return next();
     }
     res.status(401).json({ error: 'Unauthorized' });
@@ -59,7 +59,7 @@ async function startServer() {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
-      const userId = (req as any).userId;
+      const userId = req.userId;
       const documentId = await ingestionService.processDocument(req.file, userId);
       res.json({ id: documentId, filename: req.file.originalname });
     } catch (error: any) {
@@ -72,7 +72,7 @@ async function startServer() {
   // 2. List Documents
   app.get('/api/documents', async (req, res) => {
     try {
-      const userId = (req as any).userId;
+      const userId = req.userId;
       const docs = await db.getDocuments(userId);
       res.json(docs);
     } catch (error) {
@@ -84,7 +84,7 @@ async function startServer() {
   // 3. Create Chat
   app.post('/api/chats', async (req, res) => {
     try {
-      const userId = (req as any).userId;
+      const userId = req.userId;
       const chatId = await db.createChat(userId);
       res.json({ id: chatId });
     } catch (error) {
@@ -96,7 +96,7 @@ async function startServer() {
   // 4. Get Chat History
   app.get('/api/chats/:chatId', async (req, res) => {
     try {
-        const userId = (req as any).userId;
+        const userId = req.userId;
         const messages = await db.getMessages(req.params.chatId, userId);
         res.json(messages);
     } catch (error) {
@@ -119,7 +119,7 @@ async function startServer() {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      const userId = (req as any).userId;
+      const userId = req.userId;
       await chatService.generateResponse(message, chatId, mode, pdf_id, res, model, userId);
       
       // End response is handled in generateResponse or here if it returns
@@ -137,8 +137,8 @@ async function startServer() {
   // 6. Serve PDF file content
   app.get('/api/documents/:id/content', async (req, res) => {
       try {
-          const userId = (req as any).userId;
-          const doc = await db.getDocument(req.params.id, userId) as { filename: string } | undefined;
+          const userId = req.userId;
+          const doc = db.getDocument(req.params.id, userId);
           if (!doc) {
               return res.status(404).json({ error: 'Document not found or access denied' });
           }
@@ -156,8 +156,8 @@ async function startServer() {
   // 7. Delete document
   app.delete('/api/documents/:id', async (req, res) => {
     try {
-      const userId = (req as any).userId;
-      const doc = await db.getDocument(req.params.id, userId) as { filename: string } | undefined;
+      const userId = req.userId;
+      const doc = db.getDocument(req.params.id, userId);
       if (doc) {
         const filePath = path.join(uploadDir, doc.filename);
         if (fs.existsSync(filePath)) {
@@ -175,7 +175,7 @@ async function startServer() {
   // 8. Clear all documents
   app.delete('/api/documents', async (req, res) => {
     try {
-      const userId = (req as any).userId;
+      const userId = req.userId;
       const files = fs.readdirSync(uploadDir);
       files.forEach(file => {
         const filePath = path.join(uploadDir, file);
@@ -196,7 +196,7 @@ async function startServer() {
     try {
       const { title } = req.body;
       if (!title) return res.status(400).json({ error: 'Title required' });
-      const userId = (req as any).userId;
+      const userId = req.userId;
       db.updateChatTitle(req.params.id, title, userId);
       res.json({ success: true });
     } catch (error) {
@@ -207,10 +207,12 @@ async function startServer() {
   // 10. Generate document summary
   app.post('/api/documents/:id/summary', async (req, res) => {
     try {
-      const userId = (req as any).userId;
-      const doc = await db.getDocument(req.params.id, userId);
+      const userId = req.userId;
+      const doc = db.getDocument(req.params.id, userId);
       if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
+      if (doc.summary) return res.json({ summary: doc.summary });
       const summary = await chatService.generateSummary(req.params.id);
+      db.setDocumentSummary(req.params.id, summary);
       res.json({ summary });
     } catch (error) {
       console.error('Summary error:', error);
@@ -222,8 +224,8 @@ async function startServer() {
   app.post('/api/documents/:id/suggestions', async (req, res) => {
     try {
       const { lastQuestion } = req.body;
-      const userId = (req as any).userId;
-      const doc = await db.getDocument(req.params.id, userId);
+      const userId = req.userId;
+      const doc = db.getDocument(req.params.id, userId);
       if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
       const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '');
       res.json({ suggestions });
@@ -233,12 +235,25 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  });
-  app.use(vite.middlewares);
+  // Serve the built SPA in production; use Vite middleware in development.
+  const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
+  if (isProduction) {
+    const distPath = path.join(__dirname, 'dist');
+    if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+      console.error('Error: dist/index.html not found. Run `npm run build` first.');
+      process.exit(1);
+    }
+    app.use(express.static(distPath));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);

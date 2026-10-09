@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Upload, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
+import { useToast } from "./Toast";
 import { clsx } from "clsx";
 
 interface UploadZoneProps {
@@ -12,6 +13,7 @@ export function UploadZone({ onUploadComplete, isDark = false }: UploadZoneProps
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
@@ -27,12 +29,12 @@ export function UploadZone({ onUploadComplete, isDark = false }: UploadZoneProps
   };
 
   const uploadFile = async (file: File) => {
-    if (file.type !== "application/pdf") { alert("Only PDF files are supported"); return; }
+    if (file.type !== "application/pdf") { toast("Only PDF files are supported.", "error"); return; }
     setIsUploading(true);
     try {
       const doc = await api.uploadFile(file);
       onUploadComplete(doc);
-    } catch { alert("Failed to upload file"); }
+    } catch { toast("Failed to upload file.", "error"); }
     finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

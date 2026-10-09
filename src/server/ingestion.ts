@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
+import { generateEmbedding } from './embedding';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export const ingestionService = {
@@ -23,7 +24,7 @@ export const ingestionService = {
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(async (chunk) => {
-          const embedding = await this.generateEmbedding(chunk.text);
+          const embedding = generateEmbedding(chunk.text);
           const chunkId = uuidv4();
           db.createChunk(
             chunkId,
@@ -107,24 +108,5 @@ export const ingestionService = {
     }
 
     return chunks;
-  },
-
-  async generateEmbedding(text: string): Promise<number[]> {
-    // Simple embedding using character-based hashing (768 dimensions)
-    const embedding = new Array(768).fill(0);
-    const words = (text || '').toLowerCase().split(/\s+/).slice(0, 100);
-    
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      for (let j = 0; j < word.length; j++) {
-        const charCode = word.charCodeAt(j);
-        const index = (charCode * (i + 1) * (j + 1)) % 768;
-        embedding[index] += 1 / (i + 1);
-      }
-    }
-    
-    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (magnitude === 0) return new Array(768).fill(0);
-    return embedding.map(val => val / magnitude);
   }
 };

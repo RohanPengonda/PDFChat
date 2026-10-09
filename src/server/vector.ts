@@ -43,7 +43,7 @@ class LocalVectorStore implements VectorStore {
       .sort((a: any, b: any) => b.score - a.score)
       .filter((r: any) => {
         const kw = r.metadata.keyword_score;
-        return kw > 0 && r.score > 0.12;
+        return kw > 0 && r.score > 0.15;
       })
       .slice(0, topK);
   }
@@ -62,8 +62,9 @@ class LocalVectorStore implements VectorStore {
     queryWords.forEach((word, idx) => {
       const weight = 1 / (idx + 1);
       totalWeight += weight;
-      // Exact whole-word match scores full weight, partial match scores half
-      const wordBoundaryRegex = new RegExp(`\\b${word}\\b`);
+      // Exact whole-word match scores full weight, partial match scores half.
+      // Escape the word so regex metacharacters in user input cannot break/abuse it.
+      const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegExp(word)}\\b`);
       if (wordBoundaryRegex.test(textLower)) {
         matchScore += weight;         // exact word boundary match
       } else if (textLower.includes(word)) {
@@ -72,6 +73,10 @@ class LocalVectorStore implements VectorStore {
     });
 
     return totalWeight > 0 ? matchScore / totalWeight : 0;
+  }
+
+  private escapeRegExp(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {

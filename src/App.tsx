@@ -3,6 +3,8 @@ import { UploadZone } from "./components/UploadZone";
 import { PDFViewer } from "./components/PDFViewer";
 import { ChatInterface } from "./components/ChatInterface";
 import { SummaryModal } from "./components/SummaryModal";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { useToast } from "./components/Toast";
 import { useChat, Source } from "./hooks/useChat";
 import { api } from "./lib/api";
 import {
@@ -42,6 +44,13 @@ export default function App() {
   } | null>(null);
   const [summaryLoadingId, setSummaryLoadingId] = useState<string | null>(null);
   const [mode, setMode] = useState<"single" | "all">("all");
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     setMode(selectedDocId ? "single" : "all");
@@ -49,10 +58,18 @@ export default function App() {
 
   useEffect(() => {
     api.getDocuments().then(setDocuments).catch(console.error);
-    api
-      .createChat()
-      .then((chat) => setChatId(chat.id))
-      .catch(console.error);
+    const storedChatId = localStorage.getItem("pdfchat.chatId");
+    if (storedChatId) {
+      setChatId(storedChatId);
+    } else {
+      api
+        .createChat()
+        .then((chat) => {
+          localStorage.setItem("pdfchat.chatId", chat.id);
+          setChatId(chat.id);
+        })
+        .catch(console.error);
+    }
   }, []);
 
   useEffect(() => {
@@ -109,20 +126,55 @@ export default function App() {
     setMobileTab("pdf");
   };
 
-  const handleDeleteDoc = async (docId: string) => {
-    if (confirm("Delete this document?")) {
-      await api.deleteDocument(docId);
-      setDocuments((prev) => prev.filter((d) => d.id !== docId));
-      if (selectedDocId === docId) setSelectedDocId(null);
+  const handleNewChat = async () => {
+    try {
+      const chat = await api.createChat();
+      localStorage.setItem("pdfchat.chatId", chat.id);
+      setChatId(chat.id);
+      setSuggestions([]);
+    } catch (e) {
+      console.error("New chat failed:", e);
+      toast("Could not start a new chat.", "error");
     }
   };
 
-  const handleClearAll = async () => {
-    if (confirm("Clear all documents?")) {
-      await api.clearAllDocuments();
-      setDocuments([]);
-      setSelectedDocId(null);
-    }
+  const handleDeleteDoc = (docId: string) => {
+    setConfirmState({
+      title: "Delete document",
+      message:
+        "This removes the document and its indexed content. This cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.deleteDocument(docId);
+          setDocuments((prev) => prev.filter((d) => d.id !== docId));
+          if (selectedDocId === docId) setSelectedDocId(null);
+        } catch (e) {
+          console.error("Delete failed:", e);
+          toast("Failed to delete document.", "error");
+        }
+      },
+    });
+  };
+
+  const handleClearAll = () => {
+    setConfirmState({
+      title: "Clear all documents",
+      message: "This deletes every uploaded document and its indexed content.",
+      confirmLabel: "Clear all",
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.clearAllDocuments();
+          setDocuments([]);
+          setSelectedDocId(null);
+        } catch (e) {
+          console.error("Clear failed:", e);
+          toast("Failed to clear documents.", "error");
+        }
+      },
+    });
   };
 
   const fileUrl = selectedDocId
@@ -334,6 +386,7 @@ export default function App() {
       onModeChange={setMode}
       documents={documents}
       selectedDocId={selectedDocId}
+      onNewChat={handleNewChat}
     />
   );
 
@@ -375,6 +428,17 @@ export default function App() {
           content={summary.content}
           isDark={isDark}
           onClose={() => setSummary(null)}
+        />
+      )}
+
+      {confirmState && (
+        <ConfirmDialog
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          isDark={isDark}
+          onConfirm={confirmState.onConfirm}
+          onCancel={() => setConfirmState(null)}
         />
       )}
 

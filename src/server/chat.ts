@@ -1,14 +1,19 @@
 import { GoogleGenAI } from '@google/genai';
-import { db } from './db';
+import { db, type Source } from './db';
 import { vectorStore } from './vector';
+import { generateEmbedding } from './embedding';
 import { Response } from 'express';
 import prompts from './prompts.json';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Suggestions are cheap to reuse for a while and expensive (Gemini) to regenerate.
+const SUGGESTION_TTL_MS = 10 * 60 * 1000;
+const suggestionCache = new Map<string, { value: string[]; expires: number }>();
+
 export const chatService = {
   async generateResponse(message: string, chatId: string, mode: 'single' | 'all', pdf_id: string | undefined, res: Response, model?: string, userId?: string) {
-    // 1. Validate chat and ownership (do not save user message yet for consistency)
+    // 1. Validate chat and ownership
     const chat = db.getChat(chatId, userId);
     if (!chat) {
       res.write(`data: ${JSON.stringify({ error: 'Chat not found or access denied' })}\n\n`);
@@ -16,15 +21,33 @@ export const chatService = {
       return;
     }
 
-    // 2. Generate Embedding for Query
-    const queryVector = await this.generateEmbedding(message);
+    // 2. Build bounded conversation history so follow-up questions keep context.
+    // Consecutive same-role turns are merged to satisfy the model's alternation rules.
+    const history = db.getMessages(chatId, userId) as { role: 'user' | 'assistant'; content: string }[];
+    const contents: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+    for (const m of history.slice(-20)) {
+      const role = m.role === 'assistant' ? 'model' : 'user';
+      const last = contents[contents.length - 1];
+      if (last && last.role === role) {
+        last.parts[0].text += `\n\n${m.content}`;
+      } else {
+        contents.push({ role, parts: [{ text: m.content }] });
+      }
+    }
+    contents.push({ role: 'user', parts: [{ text: message }] });
 
-    // 3. Retrieve Context with query text for hybrid matching
+    // Persist the user message before generation so it is never lost on failure.
+    db.addMessage(chatId, 'user', message);
+
+    // 3. Generate Embedding for Query
+    const queryVector = generateEmbedding(message);
+
+    // 4. Retrieve Context with query text for hybrid matching
     const documentIds = mode === 'single' && pdf_id ? [pdf_id] : undefined;
     const filter = documentIds && documentIds.length > 0 ? { pdf_ids: documentIds, query: message } : { query: message };
     const relevantChunks = await vectorStore.query(queryVector, 5, filter);
 
-    // 4. Construct Prompt - number directly from array to avoid index mismatch
+    // 5. Construct Prompt - number directly from array to avoid index mismatch
     const numberedContext = relevantChunks.map((chunk, idx) =>
       `[${idx + 1}] [Page: ${chunk.metadata.page_number}]\n${chunk.metadata.text}`
     ).join('\n\n');
@@ -35,12 +58,12 @@ Context:
 ${numberedContext}
 `;
 
-    // 5. Generate Response (Streaming)
+    // 6. Generate Response (Streaming)
     const selectedModel = model || "gemini-2.5-flash";
 
     // Retry logic for transient errors (503/429 rate limits and network drops)
     let retries = 3;
-    let result;
+    let result: Awaited<ReturnType<typeof ai.models.generateContentStream>> | undefined;
 
     const isRetryable = (e: any): boolean => {
       if (e?.status === 503 || e?.status === 429) return true;
@@ -56,7 +79,7 @@ ${numberedContext}
       try {
         result = await ai.models.generateContentStream({
           model: selectedModel,
-          contents: [{ role: "user", parts: [{ text: message }] }],
+          contents,
           config: { systemInstruction },
         });
         break;
@@ -73,6 +96,12 @@ ${numberedContext}
           return;
         }
       }
+    }
+
+    if (!result) {
+      res.write(`data: ${JSON.stringify({ error: 'Model error' })}\n\n`);
+      res.end();
+      return;
     }
 
     let fullResponse = '';
@@ -94,11 +123,7 @@ ${numberedContext}
       return;
     }
 
-    // 6. Save User and Assistant Messages (full turn)
-    db.addMessage(chatId, 'user', message);
-    db.addMessage(chatId, 'assistant', fullResponse);
-    
-    // 7. Send Citations - only include chunks actually cited in the response
+    // 7. Build Citations - only include chunks actually cited in the response
     // Parse citation numbers used in the response e.g. [1], [2]
     const citedNumbers = new Set<number>();
     const citationRegex = /\[(\d+)\]/g;
@@ -114,7 +139,7 @@ ${numberedContext}
 
     const questionWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
-    const sources = chunksToShow
+    const sources: Source[] = chunksToShow
       .map((c) => {
         const chunkText = c.metadata.text;
 
@@ -138,19 +163,27 @@ ${numberedContext}
           confidence: Math.round(c.score * 100)
         };
       })
-      .filter(Boolean);
-    
+      .filter((s): s is Source => s !== null);
+
+    // 8. Persist the assistant message together with its sources so history
+    // can render citations after a reload.
+    db.addMessage(chatId, 'assistant', fullResponse, sources);
+
     res.write(`data: ${JSON.stringify({ sources })}\n\n`);
     res.end();
   },
 
   async generateSuggestions(documentId: string, lastQuestion: string): Promise<string[]> {
-    const allChunks = (db.getAllChunks(documentId) as any[]);
+    const cacheKey = `${documentId}:${lastQuestion}`;
+    const cached = suggestionCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.value;
+
+    const allChunks = db.getAllChunks(documentId);
     if (allChunks.length === 0) return [];
 
     const step = Math.max(1, Math.floor(allChunks.length / 6));
-    const sampledChunks = allChunks.filter((_: any, i: number) => i % step === 0).slice(0, 6);
-    const sampleText = sampledChunks.map((c: any) => c.content).join('\n\n');
+    const sampledChunks = allChunks.filter((_, i) => i % step === 0).slice(0, 6);
+    const sampleText = sampledChunks.map((c) => c.content).join('\n\n');
 
     const prompt = `${prompts.suggestions.prompt}\n\nDocument content:\n${sampleText}\n\nLast question asked: "${lastQuestion}"`;
 
@@ -161,13 +194,13 @@ ${numberedContext}
           model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
-        const raw = result.text || (result as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+        const raw = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
         const cleaned = raw.trim().replace(/^```json\n?|^```\n?|\n?```$/g, '').trim();
-        let parsed: any;
+        let parsed: unknown;
         try {
           parsed = JSON.parse(cleaned);
         } catch (e) {
-          console.error('Suggestions JSON parse error:', (e as any)?.message);
+          console.error('Suggestions JSON parse error:', e instanceof Error ? e.message : e);
           return [];
         }
         const candidates: string[] = Array.isArray(parsed) ? parsed.slice(0, 6) : [];
@@ -175,12 +208,13 @@ ${numberedContext}
         const validated: string[] = [];
         for (const question of candidates) {
           if (validated.length >= 3) break;
-          const qVector = await this.generateEmbedding(question);
+          const qVector = generateEmbedding(question);
           const chunks = await vectorStore.query(qVector, 1, { pdf_ids: [documentId], query: question });
           if (chunks.length > 0) {
             validated.push(question);
           }
         }
+        suggestionCache.set(cacheKey, { value: validated, expires: Date.now() + SUGGESTION_TTL_MS });
         return validated;
       } catch (error: any) {
         if ((error.status === 503 || error.status === 429) && retries > 0) {
@@ -196,9 +230,9 @@ ${numberedContext}
   },
 
   async generateSummary(documentId: string): Promise<string> {
-    const allChunks = (db.getAllChunks(documentId) as any[]);
+    const allChunks = db.getAllChunks(documentId);
     if (allChunks.length === 0) return 'No content found in this document.';
-    const sampleChunks = allChunks.slice(0, 6).map((c: any) => c.content).join('\n\n');
+    const sampleChunks = allChunks.slice(0, 6).map((c) => c.content).join('\n\n');
 
     const prompt = `${prompts.summary.systemRole}
 
@@ -225,7 +259,7 @@ ${sampleChunks}`;
         });
         const text = result.text;
         if (text) return text;
-        const candidate = (result as any)?.candidates?.[0];
+        const candidate = result.candidates?.[0];
         return candidate?.content?.parts?.[0]?.text || 'Could not generate summary.';
       } catch (error: any) {
         if (isRetryable(error) && retries > 1) {
@@ -238,23 +272,5 @@ ${sampleChunks}`;
       }
     }
     return 'Could not generate summary.';
-  },
-
-  async generateEmbedding(text: string): Promise<number[]> {
-    const embedding = new Array(768).fill(0);
-    const words = (text || '').toLowerCase().split(/\s+/).slice(0, 100);
-    
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      for (let j = 0; j < word.length; j++) {
-        const charCode = word.charCodeAt(j);
-        const index = (charCode * (i + 1) * (j + 1)) % 768;
-        embedding[index] += 1 / (i + 1);
-      }
-    }
-    
-    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (magnitude === 0) return new Array(768).fill(0);
-    return embedding.map(val => val / magnitude);
   }
 };

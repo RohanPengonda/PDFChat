@@ -19,6 +19,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **📊 Page-aware chunking**: Splits each page into 1000-character chunks with 100-character overlap, keeping the page number and character offsets of every chunk
 - **🔀 Hybrid retrieval**: Combines cosine similarity over local hash embeddings (40%) with weighted keyword matching (60%) to rank relevant chunks
 - **💬 Streaming AI answers**: Real-time token streaming over Server-Sent Events, powered by Google Gemini with automatic retry on 429/503 and network failures
+- **🧠 Conversation memory**: The last 20 turns are replayed to the model so follow-up questions resolve pronouns and references
 - **📍 Precision citations**: Only chunks the model actually cited (`[1]`, `[2]`, …) are returned, each with page number, matched sentence, and a confidence score
 - **🧠 Click-to-source**: Clicking a citation opens the source PDF at the cited page with the matching text highlighted
 - **📄 AI document summaries**: One-click structured summary generated per document, shown in a modal on upload
@@ -75,7 +76,7 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 
 #### Backend (`server.ts`, `src/server/`)
 
-- **API server** — Express with JSON + CORS, Multer uploads, and SSE streaming for chat
+- **API server** — Express with JSON body parsing, Multer uploads, and SSE streaming for chat
 - **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, 1000/100 chunking, embedding generation, batch insert
 - **Retrieval** (`vector.ts`) — scans stored chunks, scores with hybrid similarity, applies a relevance gate, returns top-K
 - **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, source payloads
@@ -220,10 +221,10 @@ AI document summary:
 | `npm run dev` | `tsx server.ts` | Express API + Vite middleware, HMR enabled |
 | `npm run build` | `vite build` | Bundles the SPA into `dist/` |
 | `npm run lint` | `tsc --noEmit` | Type check only — no ESLint config in this repo |
-| `npm start` | `tsx server.ts` | Identical to `npm run dev`; Vite middleware is always used |
+| `npm start` | `tsx server.ts --prod` | Serves the built `dist/` output (`npm run build` first) |
 | `npm run clean` | `rm -rf dist` | POSIX only |
 
-> **Note**: `npm start` currently boots the app in development mode (Vite in middleware mode) and does not serve the built `dist/` output. For a true production deploy, serve `dist/` from a static host or add a static-file branch to `server.ts` before running `npm run build && npm start`.
+> **Note**: Run `npm run build` before `npm start`. In production mode the server serves the static `dist/` bundle; if `dist/index.html` is missing it exits with an error. Development (`npm run dev`) still uses Vite middleware.
 
 ### Runtime Artifacts
 
@@ -316,7 +317,7 @@ These are created on first run and are git-ignored:
 
 **Richer context assembly**: Hierarchical chunking, query expansion, and multi-stage retrieval for long documents.
 
-**Conversation memory**: Feed prior turns into the prompt and let follow-up questions resolve pronouns and references against earlier context.
+**Smarter memory**: Summarize or window long conversations so context survives beyond the last 20 turns.
 
 **Collaborative features**: Multi-user sessions, shared document workspaces, and annotations.
 
