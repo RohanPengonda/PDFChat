@@ -9,7 +9,44 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Suggestions are cheap to reuse for a while and expensive (Gemini) to regenerate.
 const SUGGESTION_TTL_MS = 10 * 60 * 1000;
+const MAX_SUGGESTION_CACHE = 200;
 const suggestionCache = new Map<string, { value: string[]; expires: number }>();
+
+function getCachedSuggestions(key: string): string[] | null {
+  const entry = suggestionCache.get(key);
+  if (!entry) return null;
+  if (entry.expires <= Date.now()) {
+    suggestionCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCachedSuggestions(key: string, value: string[]): void {
+  const now = Date.now();
+  // Drop expired entries first, then evict oldest until under the cap.
+  for (const [k, v] of suggestionCache) {
+    if (v.expires <= now) suggestionCache.delete(k);
+  }
+  while (suggestionCache.size >= MAX_SUGGESTION_CACHE) {
+    const oldest = suggestionCache.keys().next().value;
+    if (oldest === undefined) break;
+    suggestionCache.delete(oldest);
+  }
+  suggestionCache.set(key, { value, expires: now + SUGGESTION_TTL_MS });
+}
+
+// Evenly sample up to `max` items across the list so long documents are
+// represented end-to-end instead of only from their opening pages.
+function sampleEvenly<T>(items: T[], max: number): T[] {
+  if (items.length <= max) return items;
+  const step = items.length / max;
+  const sampled: T[] = [];
+  for (let i = 0; i < max; i++) {
+    sampled.push(items[Math.min(items.length - 1, Math.floor(i * step))]);
+  }
+  return sampled;
+}
 
 export const chatService = {
   async generateResponse(message: string, chatId: string, mode: 'single' | 'all', pdf_id: string | undefined, res: Response, model?: string, userId?: string) {
@@ -86,7 +123,7 @@ ${numberedContext}
       } catch (error: any) {
         if (isRetryable(error) && retries > 1) {
           retries--;
-          const delay = (4 - retries) * 3000;
+          const delay = (3 - retries) * 3000;
           console.log(`Model ${selectedModel} unavailable (${error?.status || error?.message}), retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
@@ -105,31 +142,60 @@ ${numberedContext}
     }
 
     let fullResponse = '';
+    // Track client disconnects so we can abort early instead of streaming to a
+    // dead socket (and avoid persisting a partial answer).
+    let clientClosed = false;
+    const onClose = () => {
+      if (!res.writableEnded) clientClosed = true;
+    };
+    res.on('close', onClose);
 
     try {
       for await (const chunk of result) {
+        if (clientClosed) break;
         const chunkText = chunk.text;
         if (chunkText) {
           fullResponse += chunkText;
-          res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+          if (!res.writableEnded) {
+            res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+          }
         }
       }
     } catch (error: any) {
-      console.error('Stream interrupted:', error?.message || error);
+      if (!clientClosed) {
+        console.error('Stream interrupted:', error?.message || error);
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ error: error?.message || 'Stream failed' })}\n\n`);
+          res.end();
+        }
+      }
+      return;
+    } finally {
+      res.off('close', onClose);
+    }
+
+    // Client went away mid-stream: drop the partial answer rather than persisting it.
+    if (clientClosed) return;
+
+    // Never persist an empty assistant turn; surface it as an error instead.
+    if (!fullResponse.trim()) {
       if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ error: error?.message || 'Stream failed' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: 'The model returned an empty response.' })}\n\n`);
         res.end();
       }
       return;
     }
 
     // 7. Build Citations - only include chunks actually cited in the response
-    // Parse citation numbers used in the response e.g. [1], [2]
+    // Parse citation numbers used in the response e.g. [1], [2].
+    // Only numbers within the retrieved-context range count as citations so
+    // unrelated bracketed numbers (years, lists) don't suppress the fallback.
     const citedNumbers = new Set<number>();
     const citationRegex = /\[(\d+)\]/g;
     let match;
     while ((match = citationRegex.exec(fullResponse)) !== null) {
-      citedNumbers.add(parseInt(match[1]));
+      const n = parseInt(match[1], 10);
+      if (n >= 1 && n <= relevantChunks.length) citedNumbers.add(n);
     }
 
     // If no citations found, fall back to all retrieved chunks
@@ -175,14 +241,13 @@ ${numberedContext}
 
   async generateSuggestions(documentId: string, lastQuestion: string): Promise<string[]> {
     const cacheKey = `${documentId}:${lastQuestion}`;
-    const cached = suggestionCache.get(cacheKey);
-    if (cached && cached.expires > Date.now()) return cached.value;
+    const cached = getCachedSuggestions(cacheKey);
+    if (cached) return cached;
 
     const allChunks = db.getAllChunks(documentId);
     if (allChunks.length === 0) return [];
 
-    const step = Math.max(1, Math.floor(allChunks.length / 6));
-    const sampledChunks = allChunks.filter((_, i) => i % step === 0).slice(0, 6);
+    const sampledChunks = sampleEvenly(allChunks, 6);
     const sampleText = sampledChunks.map((c) => c.content).join('\n\n');
 
     const prompt = `${prompts.suggestions.prompt}\n\nDocument content:\n${sampleText}\n\nLast question asked: "${lastQuestion}"`;
@@ -214,7 +279,7 @@ ${numberedContext}
             validated.push(question);
           }
         }
-        suggestionCache.set(cacheKey, { value: validated, expires: Date.now() + SUGGESTION_TTL_MS });
+        setCachedSuggestions(cacheKey, validated);
         return validated;
       } catch (error: any) {
         if ((error.status === 503 || error.status === 429) && retries > 0) {
@@ -232,14 +297,25 @@ ${numberedContext}
   async generateSummary(documentId: string): Promise<string> {
     const allChunks = db.getAllChunks(documentId);
     if (allChunks.length === 0) return 'No content found in this document.';
-    const sampleChunks = allChunks.slice(0, 6).map((c) => c.content).join('\n\n');
+
+    // Sample evenly across the whole document (not just the first few pages)
+    // and cap total size so the prompt stays bounded on long PDFs.
+    const SUMMARY_MAX_CHUNKS = 24;
+    const SUMMARY_MAX_CHARS = 16000;
+    const sampledChunks = sampleEvenly(allChunks, SUMMARY_MAX_CHUNKS);
+    let sampleText = '';
+    for (const chunk of sampledChunks) {
+      if (sampleText && sampleText.length + chunk.content.length > SUMMARY_MAX_CHARS) break;
+      sampleText += (sampleText ? '\n\n' : '') + chunk.content;
+    }
+    if (!sampleText.trim()) return 'No content found in this document.';
 
     const prompt = `${prompts.summary.systemRole}
 
 ${prompts.summary.format}
 
 Document text:
-${sampleChunks}`;
+${sampleText}`;
 
     const isRetryable = (e: any): boolean => {
       if (e?.status === 503 || e?.status === 429) return true;
@@ -257,10 +333,15 @@ ${sampleChunks}`;
           model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
-        const text = result.text;
-        if (text) return text;
-        const candidate = result.candidates?.[0];
-        return candidate?.content?.parts?.[0]?.text || 'Could not generate summary.';
+        const text = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text && text.trim()) return text;
+        // Empty candidate is a transient failure: retry if attempts remain.
+        if (retries > 1) {
+          retries--;
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        break;
       } catch (error: any) {
         if (isRetryable(error) && retries > 1) {
           retries--;
@@ -271,6 +352,7 @@ ${sampleChunks}`;
         }
       }
     }
-    return 'Could not generate summary.';
+    // Throw rather than return a sentinel string, so callers never cache a failure.
+    throw new Error('Could not generate summary.');
   }
 };

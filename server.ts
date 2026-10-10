@@ -146,6 +146,9 @@ async function startServer() {
           if (!fs.existsSync(filePath)) {
                return res.status(404).json({ error: 'File not found on disk' });
           }
+          // Uploads are stored without an extension, so sendFile would otherwise
+          // serve them as application/octet-stream. Force the PDF type explicitly.
+          res.type('application/pdf');
           res.sendFile(filePath);
       } catch (error) {
           console.error('Serve PDF error:', error);
@@ -210,7 +213,10 @@ async function startServer() {
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
       if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
-      if (doc.summary) return res.json({ summary: doc.summary });
+      // Ignore previously cached failure placeholders so they can be regenerated.
+      const cachedSummary = doc.summary;
+      const isFailurePlaceholder = !cachedSummary || cachedSummary === 'Could not generate summary.';
+      if (!isFailurePlaceholder) return res.json({ summary: cachedSummary });
       const summary = await chatService.generateSummary(req.params.id);
       db.setDocumentSummary(req.params.id, summary);
       res.json({ summary });
