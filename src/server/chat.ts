@@ -7,6 +7,10 @@ import prompts from './prompts.json';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Only models the UI exposes may be selected by clients.
+const ALLOWED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro']);
+const DEFAULT_MODEL = 'gemini-2.5-flash';
+
 // Suggestions are cheap to reuse for a while and expensive (Gemini) to regenerate.
 const SUGGESTION_TTL_MS = 10 * 60 * 1000;
 const MAX_SUGGESTION_CACHE = 200;
@@ -96,7 +100,7 @@ ${numberedContext}
 `;
 
     // 6. Generate Response (Streaming)
-    const selectedModel = model || "gemini-2.5-flash";
+    const selectedModel = model && ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
 
     // Retry logic for transient errors (503/429 rate limits and network drops)
     let retries = 3;

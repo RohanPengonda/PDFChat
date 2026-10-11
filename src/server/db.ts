@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 export interface Source {
   file_name: string;
@@ -50,7 +51,10 @@ interface RawMessageRow extends Omit<MessageRow, 'sources'> {
 }
 
 // Initialize DB
-const dbPath = path.resolve('database.sqlite');
+// Resolve relative to this file (project root) so the DB is always created in
+// the same place regardless of which CWD the server is started from.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const dbPath = path.resolve(__dirname, '../../database.sqlite');
 const sqlite = new Database(dbPath);
 sqlite.pragma('foreign_keys = ON');
 

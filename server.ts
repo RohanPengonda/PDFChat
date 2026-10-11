@@ -11,6 +11,22 @@ import { ingestionService } from './src/server/ingestion';
 import { chatService } from './src/server/chat';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Messages we intentionally surface to the client (user-caused failures).
+// Anything else is logged server-side and returned as a generic error so
+// internal details (paths, stack traces) never leak to the browser.
+const SAFE_MESSAGES = new Set([
+  'Only PDF files are allowed',
+  'No extractable text found in this PDF (it may be a scanned image).',
+  'No content found in this document.',
+  'Failed to generate summary',
+]);
+
+function safeErrorMessage(message: unknown): string {
+  return typeof message === 'string' && SAFE_MESSAGES.has(message)
+    ? message
+    : 'Failed to process document.';
+}
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -64,8 +80,9 @@ async function startServer() {
       res.json({ id: documentId, filename: req.file.originalname });
     } catch (error: any) {
       console.error('Upload error:', error);
-      const msg = error?.message || 'Failed to process document';
-      res.status(500).json({ error: msg });
+      const isClientFault =
+        typeof error?.message === 'string' && SAFE_MESSAGES.has(error.message);
+      res.status(isClientFault ? 400 : 500).json({ error: safeErrorMessage(error?.message) });
     }
   });
 
@@ -119,8 +136,21 @@ async function startServer() {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      // Keep the connection alive through long model delays so proxies that
+      // terminate idle streams don't drop the response mid-generation.
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(`: keep-alive\n\n`);
+      }, 30000);
+      const stopHeartbeat = () => clearInterval(heartbeat);
+      res.once('close', stopHeartbeat);
+      res.once('finish', stopHeartbeat);
+
       const userId = req.userId;
-      await chatService.generateResponse(message, chatId, mode, pdf_id, res, model, userId);
+      try {
+        await chatService.generateResponse(message, chatId, mode, pdf_id, res, model, userId);
+      } finally {
+        stopHeartbeat();
+      }
       
       // End response is handled in generateResponse or here if it returns
     } catch (error) {
@@ -239,6 +269,25 @@ async function startServer() {
       console.error('Suggestions error:', error);
       res.status(500).json({ error: 'Failed to generate suggestions' });
     }
+  });
+
+  // Central error handler: converts Multer / file-filter / ingestion failures
+  // into JSON responses without leaking internal details.
+  app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) return next(err);
+    if (err instanceof multer.MulterError) {
+      const msg = err.code === 'LIMIT_FILE_SIZE'
+        ? 'File is too large. Maximum size is 50MB.'
+        : 'Upload failed.';
+      console.error('Upload rejected:', err.code, err.message);
+      return res.status(400).json({ error: msg });
+    }
+    if (typeof err?.message === 'string' && SAFE_MESSAGES.has(err.message)) {
+      console.error('Upload rejected:', err.message);
+      return res.status(400).json({ error: err.message });
+    }
+    console.error('Unhandled error:', err);
+    res.status(500).json({ error: 'Internal server error.' });
   });
 
   // Serve the built SPA in production; use Vite middleware in development.
