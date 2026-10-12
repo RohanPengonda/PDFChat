@@ -3,6 +3,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 
@@ -45,16 +46,26 @@ async function startServer() {
   app.use(express.json());
 
   // Simple auth middleware (optional token-based). If AUTH_TOKEN not set, allow all (dev-only).
+  //
+  // Identity is derived server-side from the token only. Any client-supplied
+  // x-user-id header is ignored: trusting it let a caller impersonate another
+  // user and read/delete documents and chats they do not own.
   const AUTH_TOKEN = process.env.AUTH_TOKEN;
   const authRequired = !!AUTH_TOKEN;
+  const safeEqual = (a: string, b: string): boolean => {
+    const ha = crypto.createHash('sha256').update(a).digest();
+    const hb = crypto.createHash('sha256').update(b).digest();
+    return crypto.timingSafeEqual(ha, hb);
+  };
   app.use((req, res, next) => {
     if (!authRequired) {
-      req.userId = req.headers['x-user-id'] as string | undefined;
+      req.userId = undefined;
       return next();
     }
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '') || (req.headers['x-api-token'] as string);
-    if (token === AUTH_TOKEN) {
-      req.userId = req.headers['x-user-id'] as string | undefined;
+    if (token && AUTH_TOKEN && safeEqual(token, AUTH_TOKEN)) {
+      // One shared token maps to one tenant; identities cannot be spoofed per request.
+      req.userId = crypto.createHash('sha256').update(AUTH_TOKEN).digest('hex').slice(0, 24);
       return next();
     }
     res.status(401).json({ error: 'Unauthorized' });
@@ -77,7 +88,9 @@ async function startServer() {
       
       const userId = req.userId;
       const documentId = await ingestionService.processDocument(req.file, userId);
-      res.json({ id: documentId, filename: req.file.originalname });
+      // Match the shape returned by GET /api/documents so the client can render
+      // the document immediately without waiting for a refetch.
+      res.json({ id: documentId, filename: req.file.filename, original_name: req.file.originalname });
     } catch (error: any) {
       console.error('Upload error:', error);
       const isClientFault =
@@ -126,9 +139,15 @@ async function startServer() {
   app.post('/api/chat', async (req, res) => {
     try {
       const { message, chatId, mode, pdf_id, model } = req.body;
-      
-      if (!message || !chatId || !mode) {
-        return res.status(400).json({ error: 'Message, chatId, and mode are required' });
+
+      if (
+        typeof message !== 'string' ||
+        !message.trim() ||
+        typeof chatId !== 'string' ||
+        !chatId ||
+        (mode !== 'single' && mode !== 'all')
+      ) {
+        return res.status(400).json({ error: 'message, chatId, and a valid mode are required' });
       }
 
       // Set headers for SSE
@@ -209,9 +228,13 @@ async function startServer() {
   app.delete('/api/documents', async (req, res) => {
     try {
       const userId = req.userId;
-      const files = fs.readdirSync(uploadDir);
-      files.forEach(file => {
-        const filePath = path.join(uploadDir, file);
+      // Only remove files that belong to the caller's documents. Wiping the
+      // whole uploads/ directory would delete other users' PDFs while leaving
+      // their DB rows intact.
+      const docs = db.getDocuments(userId);
+      docs.forEach(doc => {
+        if (!doc.filename) return;
+        const filePath = path.join(uploadDir, path.basename(doc.filename));
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }

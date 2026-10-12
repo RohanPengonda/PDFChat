@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
+import { useToast } from '../components/Toast';
 
 export interface Source {
   file_name: string;
@@ -21,6 +22,19 @@ export function useChat(chatId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const toast = useToast();
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort any in-flight stream when the chat changes or the hook unmounts so a
+  // stale answer cannot land in the wrong conversation.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setStreamingContent('');
+      setIsLoading(false);
+    };
+  }, [chatId]);
 
   useEffect(() => {
     if (chatId) {
@@ -41,6 +55,11 @@ export function useChat(chatId: string | null) {
   const sendMessage = useCallback(async (content: string, mode: 'single' | 'all', pdf_id: string | undefined, model?: string) => {
     if (!chatId) return;
 
+    // Cancel any in-flight stream so a stale answer can't be appended here.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     // Add user message immediately
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
@@ -52,6 +71,7 @@ export function useChat(chatId: string | null) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: content, chatId, mode, pdf_id, model }),
+        signal: controller.signal,
       });
 
       if (!response.ok) throw new Error('Chat failed');
@@ -63,6 +83,7 @@ export function useChat(chatId: string | null) {
       let buffer = '';
       let currentText = '';
       let currentSources: Source[] = [];
+      let streamError: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -75,9 +96,8 @@ export function useChat(chatId: string | null) {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const jsonStr = line.slice(6);
-              const data = JSON.parse(jsonStr);
-              
+              const data = JSON.parse(line.slice(6));
+
               if (data.text) {
                 currentText += data.text;
                 setStreamingContent(prev => prev + data.text);
@@ -86,7 +106,7 @@ export function useChat(chatId: string | null) {
                 currentSources = data.sources;
               }
               if (data.error) {
-                  console.error("Stream error", data.error);
+                streamError = data.error;
               }
             } catch (e) {
               console.error('Parse error', e);
@@ -95,30 +115,43 @@ export function useChat(chatId: string | null) {
         }
       }
 
-      // Finalize message
-      const assistantMsg: Message = { 
-          id: (Date.now() + 1).toString(), 
-          role: 'assistant', 
-          content: currentText, 
-          sources: currentSources 
-      };
-      
-      setMessages(prev => [...prev, assistantMsg]);
+      // Superseded by a newer request: discard this result entirely.
+      if (controller.signal.aborted) return;
+
+      // Never render an empty assistant bubble; surface the failure instead.
+      if (currentText) {
+        const assistantMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: currentText,
+          sources: currentSources,
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+      }
+
+      if (streamError) {
+        toast(streamError, 'error');
+      }
+
       setStreamingContent('');
 
-      // Fetch suggestions after answer (non-blocking)
-      const docIdForSuggestions = pdf_id || null;
-      if (docIdForSuggestions) {
-        api.getSuggestions(docIdForSuggestions, content)
+      // Fetch suggestions after a successful answer (non-blocking)
+      if (currentText && pdf_id) {
+        api.getSuggestions(pdf_id, content)
           .then(result => { if (result.length > 0) setSuggestions(result); })
           .catch(() => {});
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('Send message error:', error);
+      toast('Failed to get a response. Please try again.', 'error');
     } finally {
-      setIsLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setIsLoading(false);
+      }
     }
-  }, [chatId]);
+  }, [chatId, toast]);
 
   return { messages, isLoading, streamingContent, sendMessage, suggestions, setSuggestions };
 }

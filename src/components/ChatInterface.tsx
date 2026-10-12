@@ -41,7 +41,9 @@ export function ChatInterface({
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const titleSetRef = useRef(false);
+  // Track which chat has already had its title derived so a newly created chat
+  // still gets titled (a plain boolean would stay set for the component's life).
+  const titledChatRef = useRef<string | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,13 +51,13 @@ export function ChatInterface({
 
   // Auto-save title from first user message
   useEffect(() => {
-    if (titleSetRef.current || !chatId) return;
+    if (!chatId || titledChatRef.current === chatId) return;
     const firstUser = messages.find((m) => m.role === "user");
     if (firstUser) {
       const title =
         firstUser.content.slice(0, 40) +
         (firstUser.content.length > 40 ? "…" : "");
-      titleSetRef.current = true;
+      titledChatRef.current = chatId;
       api.updateChatTitle(chatId, title).catch(() => {});
     }
   }, [messages, chatId]);

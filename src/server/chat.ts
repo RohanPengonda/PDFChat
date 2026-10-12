@@ -11,6 +11,9 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const ALLOWED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro']);
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 
+// Generic message returned to clients so internal error details never leak.
+const PUBLIC_ERROR_MESSAGE = 'The model could not generate a response. Please try again.';
+
 // Suggestions are cheap to reuse for a while and expensive (Gemini) to regenerate.
 const SUGGESTION_TTL_MS = 10 * 60 * 1000;
 const MAX_SUGGESTION_CACHE = 200;
@@ -62,6 +65,21 @@ export const chatService = {
       return;
     }
 
+    // 1b. Scope retrieval to the documents the caller is allowed to read.
+    // Without this, a caller could pass an arbitrary pdf_id (or query "all")
+    // and retrieve chunks from documents they do not own.
+    let allowedDocumentIds: string[];
+    if (mode === 'single') {
+      if (!pdf_id || !db.getDocument(pdf_id, userId)) {
+        res.write(`data: ${JSON.stringify({ error: 'Document not found or access denied' })}\n\n`);
+        res.end();
+        return;
+      }
+      allowedDocumentIds = [pdf_id];
+    } else {
+      allowedDocumentIds = db.getDocuments(userId).map((d) => d.id);
+    }
+
     // 2. Build bounded conversation history so follow-up questions keep context.
     // Consecutive same-role turns are merged to satisfy the model's alternation rules.
     const history = db.getMessages(chatId, userId) as { role: 'user' | 'assistant'; content: string }[];
@@ -83,10 +101,10 @@ export const chatService = {
     // 3. Generate Embedding for Query
     const queryVector = generateEmbedding(message);
 
-    // 4. Retrieve Context with query text for hybrid matching
-    const documentIds = mode === 'single' && pdf_id ? [pdf_id] : undefined;
-    const filter = documentIds && documentIds.length > 0 ? { pdf_ids: documentIds, query: message } : { query: message };
-    const relevantChunks = await vectorStore.query(queryVector, 5, filter);
+    // 4. Retrieve Context (already scoped to the caller's documents)
+    const relevantChunks = allowedDocumentIds.length === 0
+      ? []
+      : await vectorStore.query(queryVector, 5, { pdf_ids: allowedDocumentIds, query: message });
 
     // 5. Construct Prompt - number directly from array to avoid index mismatch
     const numberedContext = relevantChunks.map((chunk, idx) =>
@@ -131,8 +149,8 @@ ${numberedContext}
           console.log(`Model ${selectedModel} unavailable (${error?.status || error?.message}), retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          const msg = error?.message || 'Model error';
-          res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+          console.error(`Model ${selectedModel} error:`, error?.message || error);
+          res.write(`data: ${JSON.stringify({ error: PUBLIC_ERROR_MESSAGE })}\n\n`);
           res.end();
           return;
         }
@@ -169,7 +187,7 @@ ${numberedContext}
       if (!clientClosed) {
         console.error('Stream interrupted:', error?.message || error);
         if (!res.writableEnded) {
-          res.write(`data: ${JSON.stringify({ error: error?.message || 'Stream failed' })}\n\n`);
+          res.write(`data: ${JSON.stringify({ error: PUBLIC_ERROR_MESSAGE })}\n\n`);
           res.end();
         }
       }

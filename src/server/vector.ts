@@ -89,6 +89,9 @@ class LocalVectorStore implements VectorStore {
       normA += a[i] * a[i];
       normB += b[i] * b[i];
     }
+    // A zero-magnitude vector (e.g. a query with no word characters) would
+    // otherwise yield NaN and silently poison the ranking.
+    if (normA === 0 || normB === 0) return 0;
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 }

@@ -5,7 +5,7 @@ import { useToast } from "./Toast";
 import { clsx } from "clsx";
 
 interface UploadZoneProps {
-  onUploadComplete: (doc: { id: string; filename: string }) => void;
+  onUploadComplete: (doc: { id: string; filename: string; original_name: string }) => void;
   isDark?: boolean;
 }
 

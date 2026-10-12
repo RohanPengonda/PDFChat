@@ -89,7 +89,7 @@ export default function App() {
     setSuggestions,
   } = useChat(chatId);
 
-  const handleUploadComplete = async (doc: any) => {
+  const handleUploadComplete = async (doc: Document) => {
     setDocuments((prev) => [doc, ...prev]);
     setSelectedDocId(doc.id);
     setSidebarOpen(false);
