@@ -1,7 +1,9 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
-import { generateEmbedding } from './embedding';
+import { generateEmbedding, EMBEDDING_VERSION } from './embedding';
+import { vectorStore } from './vector';
+import { chunkPages, type TextChunk } from './chunking';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export const ingestionService = {
@@ -17,7 +19,7 @@ export const ingestionService = {
       const pages = await this.extractTextFromPDF(filePath);
 
       // 3. Chunk Text
-      const chunks = this.chunkPages(pages);
+      const chunks: TextChunk[] = chunkPages(pages);
       if (chunks.length === 0) {
         throw new Error('No extractable text found in this PDF (it may be a scanned image).');
       }
@@ -42,6 +44,7 @@ export const ingestionService = {
         }));
       }
 
+      vectorStore.invalidate();
       return documentId;
     } catch (e: any) {
       try {
@@ -54,6 +57,20 @@ export const ingestionService = {
       } catch {}
       throw e;
     }
+  },
+
+  // Re-embed chunks stored with an older embedding algorithm version. Local and
+  // synchronous, so this runs at boot and keeps old libraries searchable.
+  reindexIfNeeded(): number {
+    const stale = db.getChunksNeedingReindex();
+    for (const chunk of stale) {
+      db.setChunkEmbedding(chunk.id, generateEmbedding(chunk.content));
+    }
+    if (stale.length > 0) {
+      vectorStore.invalidate();
+      console.log(`Re-indexed ${stale.length} chunk(s) with embedding v${EMBEDDING_VERSION}.`);
+    }
+    return stale.length;
   },
 
   async extractTextFromPDF(filePath: string): Promise<{ pageNumber: number; text: string }[]> {
@@ -91,41 +108,5 @@ export const ingestionService = {
     }
   },
 
-  chunkPages(pages: { pageNumber: number; text: string }[]): { text: string; pageNumber: number; chunkIndex: number; charStartPos: number; charEndPos: number }[] {
-    const chunks: { text: string; pageNumber: number; chunkIndex: number; charStartPos: number; charEndPos: number }[] = [];
-    const CHUNK_SIZE = 1000; // Characters roughly
-    const OVERLAP = 100;
-
-    let globalChunkIndex = 0;
-
-    for (const page of pages) {
-      const text = page.text;
-      // Skip pages with no extractable text (blank pages, image-only pages).
-      if (!text || !text.trim()) continue;
-
-      if (text.length <= CHUNK_SIZE) {
-        chunks.push({ text, pageNumber: page.pageNumber, chunkIndex: globalChunkIndex++, charStartPos: 0, charEndPos: text.length });
-        continue;
-      }
-
-      let start = 0;
-      while (start < text.length) {
-        const end = Math.min(start + CHUNK_SIZE, text.length);
-        const chunkText = text.slice(start, end);
-        // Skip whitespace-only tails (e.g. the final overlap window).
-        if (chunkText.trim().length > 0) {
-          chunks.push({ 
-            text: chunkText, 
-            pageNumber: page.pageNumber, 
-            chunkIndex: globalChunkIndex++, 
-            charStartPos: start,
-            charEndPos: end
-          });
-        }
-        start += (CHUNK_SIZE - OVERLAP);
-      }
-    }
-
-    return chunks;
-  }
+  chunkPages,
 };

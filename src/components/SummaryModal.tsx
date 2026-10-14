@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { clsx } from "clsx";
@@ -12,6 +12,17 @@ interface SummaryModalProps {
 
 export function SummaryModal({ docName, content, isDark, onClose }: SummaryModalProps) {
   const [copied, setCopied] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Close on Escape and move focus into the dialog when it opens.
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -35,7 +46,12 @@ export function SummaryModal({ docName, content, isDark, onClose }: SummaryModal
       />
 
       {/* Modal */}
-      <div className={clsx("relative w-full max-w-2xl max-h-[85dvh] rounded-2xl border shadow-2xl flex flex-col", bg)}>
+      <div
+        className={clsx("relative w-full max-w-2xl max-h-[85dvh] rounded-2xl border shadow-2xl flex flex-col", bg)}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Document summary"
+      >
         {/* Header */}
         <div className={clsx("flex items-center justify-between px-5 py-4 border-b flex-shrink-0", isDark ? "border-[#2d3548]" : "border-gray-200")}>
           <div className="flex items-center gap-2.5 min-w-0">
@@ -55,7 +71,9 @@ export function SummaryModal({ docName, content, isDark, onClose }: SummaryModal
               {copied ? "Copied!" : "Copy"}
             </button>
             <button
+              ref={closeButtonRef}
               onClick={onClose}
+              aria-label="Close summary"
               className={clsx("p-2 rounded-lg transition-colors", isDark ? "text-[#6b7a99] hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100")}
             >
               <X className="w-4 h-4" />

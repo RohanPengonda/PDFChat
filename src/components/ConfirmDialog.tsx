@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { clsx } from "clsx";
 
 interface ConfirmDialogProps {
@@ -19,6 +19,17 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Close on Escape (unless mid-action) and focus the confirm button on open.
+  useEffect(() => {
+    confirmButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onCancel]);
 
   const handleConfirm = async () => {
     setBusy(true);
@@ -65,6 +76,7 @@ export function ConfirmDialog({
             Cancel
           </button>
           <button
+            ref={confirmButtonRef}
             onClick={handleConfirm}
             disabled={busy}
             className="px-3.5 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"

@@ -179,6 +179,7 @@ export function ChatInterface({
                     copyBtn,
                   )}
                   title="Copy"
+                  aria-label="Copy response"
                 >
                   {copiedId === msg.id ? (
                     <Check className="w-3 h-3 text-emerald-500" />

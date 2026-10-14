@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { EMBEDDING_VERSION } from './embedding';
 
 export interface Source {
   file_name: string;
@@ -28,7 +29,10 @@ export interface ChunkRow {
   chunk_index: number;
   char_start_pos: number;
   char_end_pos: number;
-  embedding: number[];
+  // Raw JSON text as stored. Parsing is done (and cached) by the vector store so
+  // embeddings are not deserialized on every single retrieval.
+  embedding: string | null;
+  embedding_version: number;
   created_at: string;
   file_name: string;
 }
@@ -40,10 +44,6 @@ export interface MessageRow {
   content: string;
   sources?: Source[];
   created_at: string;
-}
-
-interface RawChunkRow extends Omit<ChunkRow, 'embedding'> {
-  embedding: string | null;
 }
 
 interface RawMessageRow extends Omit<MessageRow, 'sources'> {
@@ -78,6 +78,7 @@ sqlite.exec(`
     char_start_pos INTEGER DEFAULT 0,
     char_end_pos INTEGER DEFAULT 0,
     embedding BLOB,
+    embedding_version INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
   );
@@ -112,6 +113,7 @@ ensureColumn('documents', 'user_id', 'TEXT');
 ensureColumn('documents', 'summary', 'TEXT');
 ensureColumn('chats', 'user_id', 'TEXT');
 ensureColumn('messages', 'sources', 'TEXT');
+ensureColumn('chunks', 'embedding_version', 'INTEGER DEFAULT 0');
 
 // Indexes must be created after tables (and migrated columns) exist
 sqlite.exec(`
@@ -149,15 +151,37 @@ export const db = {
 
   // Chunks
   createChunk: (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[], charStartPos?: number, charEndPos?: number): void => {
-    const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    stmt.run(id, documentId, content, pageNumber, chunkIndex, charStartPos ?? 0, charEndPos ?? content.length, JSON.stringify(embedding));
+    const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding, embedding_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    stmt.run(id, documentId, content, pageNumber, chunkIndex, charStartPos ?? 0, charEndPos ?? content.length, JSON.stringify(embedding), EMBEDDING_VERSION);
   },
 
   getAllChunks: (documentId?: string): ChunkRow[] => {
-    const rows = (documentId
+    return (documentId
       ? sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id = ?').all(documentId)
-      : sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id').all()) as RawChunkRow[];
-    return rows.map((c) => ({ ...c, embedding: c.embedding ? (JSON.parse(c.embedding) as number[]) : [] }));
+      : sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id').all()) as ChunkRow[];
+  },
+
+  // Fetch only chunks belonging to the given documents (SQL-side scoping) so a
+  // query never loads rows for documents the caller cannot read.
+  getChunksByDocumentIds: (documentIds: string[]): ChunkRow[] => {
+    if (documentIds.length === 0) return [];
+    const placeholders = documentIds.map(() => '?').join(',');
+    return sqlite
+      .prepare(`SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id IN (${placeholders})`)
+      .all(...documentIds) as ChunkRow[];
+  },
+
+  // Chunks whose stored embedding predates the current algorithm version.
+  getChunksNeedingReindex: (): { id: string; content: string }[] => {
+    return sqlite
+      .prepare('SELECT id, content FROM chunks WHERE embedding_version IS NULL OR embedding_version != ?')
+      .all(EMBEDDING_VERSION) as { id: string; content: string }[];
+  },
+
+  setChunkEmbedding: (id: string, embedding: number[]): void => {
+    sqlite
+      .prepare('UPDATE chunks SET embedding = ?, embedding_version = ? WHERE id = ?')
+      .run(JSON.stringify(embedding), EMBEDDING_VERSION, id);
   },
 
   // Chats
@@ -190,6 +214,10 @@ export const db = {
     const stmt = sqlite.prepare('INSERT INTO messages (id, chat_id, role, content, sources) VALUES (?, ?, ?, ?, ?)');
     stmt.run(id, chatId, role, content, sources && sources.length ? JSON.stringify(sources) : null);
     return id;
+  },
+
+  deleteMessage: (id: string): void => {
+    sqlite.prepare('DELETE FROM messages WHERE id = ?').run(id);
   },
 
   getMessages: (chatId: string, userId?: string): MessageRow[] => {

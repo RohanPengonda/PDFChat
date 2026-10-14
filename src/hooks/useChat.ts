@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useToast } from '../components/Toast';
 
 export interface Source {
@@ -17,7 +17,7 @@ export interface Message {
   sources?: Source[];
 }
 
-export function useChat(chatId: string | null) {
+export function useChat(chatId: string | null, onChatInvalid?: () => void) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -37,6 +37,8 @@ export function useChat(chatId: string | null) {
   }, [chatId]);
 
   useEffect(() => {
+    // Suggestions belong to the previous conversation; drop them on chat switch.
+    setSuggestions([]);
     if (chatId) {
       api.getChatHistory(chatId).then((msgs) => {
           const uiMsgs = (msgs as Message[]).map((m) => ({
@@ -46,11 +48,19 @@ export function useChat(chatId: string | null) {
               sources: m.sources,
           }));
           setMessages(uiMsgs);
-      }).catch(console.error);
+      }).catch((error) => {
+        // The stored chat no longer exists (e.g. after a DB reset). Let the app
+        // start a fresh chat instead of silently showing an empty conversation.
+        if (error instanceof ApiError && error.status === 404) {
+          onChatInvalid?.();
+          return;
+        }
+        console.error(error);
+      });
     } else {
         setMessages([]);
     }
-  }, [chatId]);
+  }, [chatId, onChatInvalid]);
 
   const sendMessage = useCallback(async (content: string, mode: 'single' | 'all', pdf_id: string | undefined, model?: string) => {
     if (!chatId) return;
@@ -135,9 +145,11 @@ export function useChat(chatId: string | null) {
 
       setStreamingContent('');
 
-      // Fetch suggestions after a successful answer (non-blocking)
-      if (currentText && pdf_id) {
-        api.getSuggestions(pdf_id, content)
+      // Fetch suggestions after a successful answer (non-blocking). In "all"
+      // mode no pdf_id is sent so suggestions span the whole library.
+      if (currentText) {
+        const scope = mode === 'single' ? pdf_id : undefined;
+        api.getSuggestions(scope, content)
           .then(result => { if (result.length > 0) setSuggestions(result); })
           .catch(() => {});
       }

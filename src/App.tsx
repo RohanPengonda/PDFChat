@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { UploadZone } from "./components/UploadZone";
 import { PDFViewer } from "./components/PDFViewer";
 import { ChatInterface } from "./components/ChatInterface";
@@ -77,8 +77,20 @@ export default function App() {
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
     document.body.style.backgroundColor = isDark ? "#161b27" : "#ede8e0";
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", isDark ? "#161b27" : "#f7f4f0");
+    if (meta) meta.setAttribute("content", isDark ? "#161b27" : "#ede8e0");
   }, [isDark]);
+
+  // Recover from a chat id that no longer exists server-side (e.g. DB reset)
+  // by transparently creating a fresh chat.
+  const recoverChat = useCallback(async () => {
+    try {
+      const chat = await api.createChat();
+      localStorage.setItem("pdfchat.chatId", chat.id);
+      setChatId(chat.id);
+    } catch (e) {
+      console.error("Chat recovery failed:", e);
+    }
+  }, []);
 
   const {
     messages,
@@ -87,7 +99,7 @@ export default function App() {
     sendMessage,
     suggestions,
     setSuggestions,
-  } = useChat(chatId);
+  } = useChat(chatId, recoverChat);
 
   const handleUploadComplete = async (doc: Document) => {
     setDocuments((prev) => [doc, ...prev]);
@@ -99,6 +111,7 @@ export default function App() {
       setSummary({ docName: doc.original_name || doc.filename, content });
     } catch (e) {
       console.error("Summary failed:", e);
+      toast("Could not generate a summary for this document.", "error");
     }
   };
 

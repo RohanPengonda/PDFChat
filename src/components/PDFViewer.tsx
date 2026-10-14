@@ -57,20 +57,37 @@ export function PDFViewer({
     setNumPages(numPages);
   }
 
-  // Improved highlighting effect with exact text matching
+  // Highlight the cited passage in the rendered text layer.
+  //
+  // The text layer is rendered asynchronously, so we poll until spans exist
+  // instead of assuming a fixed delay. Match positions are computed in a
+  // whitespace-stripped copy of the page text (the stored chunk joins PDF items
+  // with spaces while the DOM does not) and then mapped back to real spans.
   useEffect(() => {
     if (!highlightText || !containerRef.current) return;
 
-    const timer = setTimeout(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const applyHighlight = (attempt: number) => {
+      if (cancelled) return;
       const textLayer = containerRef.current?.querySelector(
         ".react-pdf__Page__textContent",
-      );
-      if (!textLayer) return;
+      ) as HTMLElement | null;
+      const spans = textLayer
+        ? (Array.from(textLayer.querySelectorAll("span")) as HTMLElement[])
+        : [];
 
-      // Reset previous highlights
-      const spans = Array.from(
-        textLayer.querySelectorAll("span"),
-      ) as HTMLElement[];
+      const hasText = spans.some((s) => (s.textContent || "").trim().length > 0);
+      if (!textLayer || spans.length === 0 || !hasText) {
+        // Still rendering; retry for a few seconds before giving up.
+        if (attempt < 25) {
+          timeoutId = setTimeout(() => applyHighlight(attempt + 1), 120);
+        }
+        return;
+      }
+
+      // Reset any previous highlight.
       spans.forEach((span) => {
         span.style.backgroundColor = "";
         span.style.padding = "";
@@ -78,26 +95,20 @@ export function PDFViewer({
         span.removeAttribute("data-highlight-id");
       });
 
-      // Prepare search text - normalize whitespace
-      const searchText = highlightText.toLowerCase().trim();
-      const normalizedSearch = searchText.replace(/\s+/g, " ");
+      const normalizedSearch = highlightText.toLowerCase().trim().replace(/\s+/g, " ");
       const searchCompact = normalizedSearch.replace(/\s+/g, "");
+      if (!searchCompact) return;
 
-      // Collect all text spans and their positions
-      const spanTexts: { span: HTMLElement; text: string; index: number }[] =
-        [];
+      // Collect spans with cumulative real positions.
+      const spanTexts: { span: HTMLElement; text: string; index: number }[] = [];
       let globalIndex = 0;
-
-      spans.forEach((span) => {
+      for (const span of spans) {
         const text = (span.textContent || "").toLowerCase();
         spanTexts.push({ span, text, index: globalIndex });
         globalIndex += text.length;
-      });
+      }
 
-      // The stored chunk text joins pdf items with spaces, while the text layer
-      // renders items without separator spaces. Build a whitespace-stripped copy
-      // of the page text (with an offset map back to real span positions) so the
-      // search string aligns with what is actually rendered.
+      // Whitespace-stripped page text + map from stripped index -> real index.
       let fullCompact = "";
       const offsetMap: number[] = [];
       for (const s of spanTexts) {
@@ -109,85 +120,71 @@ export function PDFViewer({
         }
       }
 
-      let matchStart = searchCompact ? fullCompact.indexOf(searchCompact) : -1;
-
-      // Fallback: match the first specific keyword (>5 chars) in compact space
+      // Prefer the full phrase; fall back to the first distinctive keyword.
+      let matchStart = fullCompact.indexOf(searchCompact);
+      let matchLength = searchCompact.length;
       if (matchStart === -1) {
-        const keywords = normalizedSearch
-          .split(/\s+/)
-          .filter((p) => p.length > 5);
+        const keywords = normalizedSearch.split(/\s+/).filter((p) => p.length > 5);
         for (const keyword of keywords) {
           const kwCompact = keyword.replace(/\s+/g, "");
           const pos = kwCompact ? fullCompact.indexOf(kwCompact) : -1;
           if (pos !== -1) {
             matchStart = pos;
+            matchLength = kwCompact.length;
             break;
           }
         }
       }
+      if (matchStart === -1) return;
 
-      // Map the compact match position back to a real position in the text layer
-      if (matchStart !== -1) {
-        matchStart = offsetMap[matchStart] ?? -1;
+      // Map compact start/end back to real character positions.
+      const startReal = offsetMap[matchStart];
+      const endCompact = Math.min(matchStart + matchLength - 1, offsetMap.length - 1);
+      const endReal = offsetMap[endCompact];
+      if (startReal === undefined || endReal === undefined) return;
+
+      // Find the spans covering [startReal, endReal].
+      let startSpanIdx = -1;
+      let endSpanIdx = -1;
+      let cursor = 0;
+      for (let i = 0; i < spanTexts.length; i++) {
+        const spanEnd = cursor + spanTexts[i].text.length;
+        if (startSpanIdx === -1 && startReal < spanEnd && startReal >= cursor) {
+          startSpanIdx = i;
+        }
+        if (startSpanIdx !== -1 && endReal < spanEnd) {
+          endSpanIdx = i;
+          break;
+        }
+        cursor = spanEnd;
+      }
+      if (endSpanIdx === -1 && startSpanIdx !== -1) {
+        endSpanIdx = spanTexts.length - 1;
       }
 
-      if (matchStart !== -1) {
-        // Find the spans that contain this match
-        let currentPos = 0;
-        let startSpanIdx = -1;
-        let endSpanIdx = -1;
-        let highlightId = `highlight-${Date.now()}`;
-
-        for (let i = 0; i < spanTexts.length; i++) {
-          const spanLength = spanTexts[i].text.length;
-          const spanEnd = currentPos + spanLength;
-
-          // Start span
-          if (
-            startSpanIdx === -1 &&
-            matchStart < spanEnd &&
-            matchStart >= currentPos
-          ) {
-            startSpanIdx = i;
-          }
-
-          // End span (match up to ~250 chars or 8 spans, whichever is smaller)
-          if (
-            startSpanIdx !== -1 &&
-            (spanEnd - matchStart >= 250 || i >= startSpanIdx + 8)
-          ) {
-            endSpanIdx = i;
-            break;
-          }
-
-          currentPos = spanEnd;
+      if (startSpanIdx !== -1 && endSpanIdx !== -1) {
+        const highlightId = `highlight-${Date.now()}`;
+        for (let i = startSpanIdx; i <= endSpanIdx; i++) {
+          const span = spanTexts[i].span;
+          span.style.backgroundColor = "rgba(255, 255, 100, 0.45)";
+          span.style.padding = "2px 4px";
+          span.style.borderRadius = "3px";
+          span.setAttribute("data-highlight-id", highlightId);
         }
-
-        // If we didn't find end, use a reasonable range
-        if (endSpanIdx === -1) {
-          endSpanIdx = Math.min(startSpanIdx + 12, spans.length - 1);
-        }
-
-        // Highlight the found spans
-        if (startSpanIdx !== -1 && endSpanIdx !== -1) {
-          for (let i = startSpanIdx; i <= endSpanIdx; i++) {
-            const span = spanTexts[i].span;
-            span.style.backgroundColor = "rgba(255, 255, 100, 0.45)"; // Light yellow
-            span.style.padding = "2px 4px";
-            span.style.borderRadius = "3px";
-            span.setAttribute("data-highlight-id", highlightId);
-          }
-
-          // Scroll the first highlighted span into view
-          spanTexts[startSpanIdx].span.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
+        spanTexts[startSpanIdx].span.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
       }
-    }, 300); // Reduced timeout for faster highlighting
+    };
 
-    return () => clearTimeout(timer);
+    // Small initial delay so the page has a chance to mount before polling.
+    timeoutId = setTimeout(() => applyHighlight(0), 60);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [currentPage, highlightText, fileUrl]);
 
   const bg = isDark ? "bg-[#161b27]" : "bg-[#f0ece6]";

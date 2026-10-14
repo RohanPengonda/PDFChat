@@ -17,7 +17,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 ## ✨ Key Features
 
 - **📊 Page-aware chunking**: Splits each page into 1000-character chunks with 100-character overlap, keeping the page number and character offsets of every chunk
-- **🔀 Hybrid retrieval**: Combines cosine similarity over local hash embeddings (40%) with weighted keyword matching (60%) to rank relevant chunks
+- **🔀 Hybrid retrieval**: Combines cosine similarity over local lexical embeddings (40%) with weighted keyword matching (60%) to rank relevant chunks
 - **💬 Streaming AI answers**: Real-time token streaming over Server-Sent Events, powered by Google Gemini with automatic retry on 429/503 and network failures
 - **🧠 Conversation memory**: The last 20 turns are replayed to the model so follow-up questions resolve pronouns and references
 - **📍 Precision citations**: Only chunks the model actually cited (`[1]`, `[2]`, …) are returned, each with page number, matched sentence, and a confidence score
@@ -59,7 +59,7 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
                      │   documents / chunks /    │
                      │   chats / messages        │
                      │ - uploads/ (PDF files)    │
-                     │ - local hash embedding    │
+                     │ - local lexical embedding │
                      │   + hybrid scoring        │
                      └────────────────────────────┘
 ```
@@ -88,16 +88,16 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 #### Document Ingestion
 
 ```
-PDF Upload (PDF-only, 50MB limit) → PDF.js text extraction (per page) → Chunking (1000 chars, 100 overlap)
-           → Hash embedding (768-dim) → SQLite insert (content, page, offsets, vector)
+PDF Upload (PDF-only, magic-byte checked, 50MB limit) → PDF.js text extraction (per page) → Chunking (1000 chars, 100 overlap)
+           → Lexical embedding v2 (768-dim) → SQLite insert (content, page, offsets, vector)
 ```
 
-Embeddings are computed **locally** — no embedding API is called during ingestion.
+Embeddings are computed **locally** — no embedding API is called during ingestion. Each chunk records the `embedding_version` it was built with; chunks from an older algorithm are transparently re-embedded on boot.
 
 #### Query Processing
 
 ```
-User query → Local hash embedding → Hybrid scoring (0.4·cosine + 0.6·keyword)
+User query → Local lexical embedding → Hybrid scoring (0.4·cosine + 0.6·keyword)
            → Relevance gate → Top 5 chunks → Numbered context [1]…[5] in system instruction
            → Gemini stream → SSE text frames → final sources frame
 ```
@@ -112,7 +112,7 @@ Sources frame (post-stream) ► citation chips with confidence %
 
 ### Key Design Decisions
 
-- **Hybrid retrieval weighting** — keyword score is weighted 60% because the hash embedding captures character patterns, not semantics; keyword matching carries most of the retrieval signal
+- **Hybrid retrieval weighting** — keyword score is weighted 60% because the local embedding captures lexical structure (word tokens, character trigrams, word bigrams) rather than true semantics; keyword matching carries most of the retrieval signal
 - **Relevance gate** — a chunk must produce at least one keyword match and exceed a hybrid score of `0.15`, so weak matches never reach the model
 - **Positional keyword weighting** — earlier query words weigh more (`1/(i+1)`), so the first terms in a question dominate matching
 - **Citation parsing** — the model is asked to cite `[n]`; only those chunks are returned as sources, with the sentence best matching the question used as the preview
@@ -149,8 +149,8 @@ Sources frame (post-stream) ► citation chips with confidence %
 ### AI & Data
 
 - **Google Gemini API** — `gemini-2.5-flash` (default) and `gemini-2.5-pro`
-- **Local hash embedding** — 768-dimension character-hash vectors, normalized (no external embedding provider)
-- **SQLite vector store** — embeddings stored as JSON in the `chunks` table and scored at query time
+- **Local lexical embedding** — 768-dimension token/n-gram hash vectors, L2-normalized (no external embedding provider), versioned for automatic re-indexing
+- **SQLite vector store** — embeddings stored as JSON in the `chunks` table; retrieval is scoped in SQL and parsed vectors are cached in memory
 
 ---
 
@@ -202,7 +202,12 @@ AI document summary:
     GEMINI_API_KEY=your_api_key_here
     # Optional: DISABLE_HMR=true to turn off Vite HMR
     # Optional: AUTH_TOKEN=your_secret_token for multi-user auth
+    # Optional: HOST=0.0.0.0 to expose on the LAN (defaults to 127.0.0.1)
+    # Optional: PORT=3000
     ```
+
+   The server binds to `127.0.0.1` by default. Set `HOST=0.0.0.0` when running in a
+   container or testing from another device.
 
 4. **Start the server**
 
@@ -220,9 +225,11 @@ AI document summary:
 | --- | --- | --- |
 | `npm run dev` | `tsx server.ts` | Express API + Vite middleware, HMR enabled |
 | `npm run build` | `vite build` | Bundles the SPA into `dist/` |
-| `npm run lint` | `tsc --noEmit` | Type check only — no ESLint config in this repo |
+| `npm run lint` | `eslint .` | ESLint (typescript-eslint + react-hooks) |
+| `npm run typecheck` | `tsc --noEmit` | Type check only |
+| `npm test` | `vitest run` | Unit tests for the pure server logic |
 | `npm start` | `tsx server.ts --prod` | Serves the built `dist/` output (`npm run build` first) |
-| `npm run clean` | `rm -rf dist` | POSIX only |
+| `npm run clean` | `node -e "…rmSync('dist')"` | Cross-platform (Node) |
 
 > **Note**: Run `npm run build` before `npm start`. In production mode the server serves the static `dist/` bundle; if `dist/index.html` is missing it exits with an error. Development (`npm run dev`) still uses Vite middleware.
 
@@ -271,7 +278,8 @@ These are created on first run and are git-ignored:
 | `PATCH` | `/api/chats/:id/title` | Rename a chat |
 | `POST` | `/api/chat` | `{ message, chatId, mode, pdf_id?, model? }` → SSE stream of `text` frames then a `sources` frame |
 | `POST` | `/api/documents/:id/summary` | Generate a document summary |
-| `POST` | `/api/documents/:id/suggestions` | Generate validated follow-up questions |
+| `POST` | `/api/documents/:id/suggestions` | Generate validated follow-up questions for one document |
+| `POST` | `/api/suggestions` | Follow-up questions; scope to `pdf_id` or omit it to span every document |
 
 ### Project Structure
 
@@ -295,7 +303,7 @@ These are created on first run and are git-ignored:
 
 **PDF text extraction**: Text layer quality varies widely across PDFs (scans, broken encodings, multi-column layouts). The extractor joins PDF.js text items with spaces, which is reliable for born-digital documents but degrades on scanned ones — OCR would be the next step.
 
-**Retrieval without a real embedding model**: The local 768-dim character-hash vector captures surface character patterns, not meaning. It is fast and dependency-free, but it cannot match synonyms or paraphrase, which is exactly why keyword matching is weighted more heavily in the hybrid score.
+**Retrieval without a real embedding model**: The local 768-dim vector hashes word tokens, character trigrams and word bigrams — more signal than a plain character hash, but still lexical rather than semantic. It is fast, dependency-free and (via `embedding_version`) automatically re-indexed when the algorithm changes, but it cannot match synonyms or paraphrase, which is exactly why keyword matching is weighted more heavily in the hybrid score.
 
 **Relevance gating matters**: Returning the top-5 chunks unconditionally injected unrelated context into prompts. Requiring a keyword hit and a minimum hybrid score measurably reduced off-topic answers.
 
@@ -303,7 +311,7 @@ These are created on first run and are git-ignored:
 
 **Streaming resilience**: Transient 503/429 responses and dropped connections are common with the Gemini API. Retrying with backoff and forwarding errors as an SSE `error` frame keeps the UI responsive instead of hanging on a spinner.
 
-**Full-scan retrieval**: Chunks are loaded and scored on every query, which is fine for a personal library but does not scale — an approximate nearest-neighbour index would be required for large collections.
+**Retrieval scaling**: Retrieval is scoped to the caller's documents in SQL and parsed vectors are cached in memory (invalidated whenever chunks change), so unrelated libraries are never loaded. Scoring is still linear in the number of in-scope chunks — fine for a personal library, but an approximate nearest-neighbour index would be required at large scale.
 
 ---
 

@@ -10,24 +10,60 @@ import multer from 'multer';
 import { db } from './src/server/db';
 import { ingestionService } from './src/server/ingestion';
 import { chatService } from './src/server/chat';
+import { vectorStore } from './src/server/vector';
+import { SAFE_MESSAGES, safeErrorMessage } from './src/server/util';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Messages we intentionally surface to the client (user-caused failures).
-// Anything else is logged server-side and returned as a generic error so
-// internal details (paths, stack traces) never leak to the browser.
-const SAFE_MESSAGES = new Set([
-  'Only PDF files are allowed',
-  'No extractable text found in this PDF (it may be a scanned image).',
-  'No content found in this document.',
-  'Failed to generate summary',
-]);
-
-function safeErrorMessage(message: unknown): string {
-  return typeof message === 'string' && SAFE_MESSAGES.has(message)
-    ? message
-    : 'Failed to process document.';
+// PDFs may carry a few bytes of whitespace/BOM before the header, so sniff a
+// window rather than assuming the magic bytes are at offset 0.
+function looksLikePdf(filePath: string): boolean {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const buf = Buffer.alloc(1024);
+      const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
+      return buf.subarray(0, bytesRead).includes('%PDF-');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
 }
+
+// Minimal in-memory fixed-window rate limiter (no external dependency).
+// Suitable for a single-process deployment; use a shared store behind a proxy.
+function rateLimit(options: { windowMs: number; max: number }) {
+  const hits = new Map<string, { count: number; reset: number }>();
+  let lastSweep = Date.now();
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const now = Date.now();
+    // Opportunistically evict expired windows so the map cannot grow unbounded.
+    if (now - lastSweep > options.windowMs) {
+      for (const [key, entry] of hits) {
+        if (entry.reset <= now) hits.delete(key);
+      }
+      lastSweep = now;
+    }
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
+    const entry = hits.get(key);
+    if (!entry || entry.reset <= now) {
+      hits.set(key, { count: 1, reset: now + options.windowMs });
+      return next();
+    }
+    if (entry.count >= options.max) {
+      res.setHeader('Retry-After', Math.ceil((entry.reset - now) / 1000));
+      return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+    }
+    entry.count++;
+    next();
+  };
+}
+
+// Expensive (Gemini-backed) endpoints get a shared budget per client.
+const aiRateLimit = rateLimit({ windowMs: 60_000, max: 30 });
+
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -41,9 +77,13 @@ async function startServer() {
   }
 
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
+  // Bind to loopback by default so the API is not exposed on the LAN. Set
+  // HOST=0.0.0.0 explicitly when running in a container or testing from a phone.
+  const HOST = process.env.HOST || '127.0.0.1';
 
-  app.use(express.json());
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '1mb' }));
 
   // Simple auth middleware (optional token-based). If AUTH_TOKEN not set, allow all (dev-only).
   //
@@ -85,7 +125,13 @@ async function startServer() {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
+
+      // The declared MIME type is client-controlled; verify the actual bytes.
+      if (!looksLikePdf(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+        return res.status(400).json({ error: 'Only PDF files are allowed' });
+      }
+
       const userId = req.userId;
       const documentId = await ingestionService.processDocument(req.file, userId);
       // Match the shape returned by GET /api/documents so the client can render
@@ -127,6 +173,12 @@ async function startServer() {
   app.get('/api/chats/:chatId', async (req, res) => {
     try {
         const userId = req.userId;
+        // Distinguish a genuinely unknown chat from an empty one so the client
+        // can recover from a stale localStorage chat id instead of silently
+        // showing an empty conversation.
+        if (!db.getChat(req.params.chatId, userId)) {
+          return res.status(404).json({ error: 'Chat not found' });
+        }
         const messages = await db.getMessages(req.params.chatId, userId);
         res.json(messages);
     } catch (error) {
@@ -136,7 +188,7 @@ async function startServer() {
   });
 
   // 5. Send Message (Streaming)
-  app.post('/api/chat', async (req, res) => {
+  app.post('/api/chat', aiRateLimit, async (req, res) => {
     try {
       const { message, chatId, mode, pdf_id, model } = req.body;
 
@@ -217,6 +269,7 @@ async function startServer() {
         }
       }
       db.deleteDocument(req.params.id, userId);
+      vectorStore.invalidate();
       res.json({ success: true });
     } catch (error) {
       console.error('Delete document error:', error);
@@ -240,6 +293,7 @@ async function startServer() {
         }
       });
       db.clearAllDocuments(userId);
+      vectorStore.invalidate();
       res.json({ success: true });
     } catch (error) {
       console.error('Clear documents error:', error);
@@ -255,13 +309,13 @@ async function startServer() {
       const userId = req.userId;
       db.updateChatTitle(req.params.id, title, userId);
       res.json({ success: true });
-    } catch (error) {
+    } catch {
       res.status(500).json({ error: 'Failed to update title' });
     }
   });
 
   // 10. Generate document summary
-  app.post('/api/documents/:id/summary', async (req, res) => {
+  app.post('/api/documents/:id/summary', aiRateLimit, async (req, res) => {
     try {
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
@@ -279,14 +333,33 @@ async function startServer() {
     }
   });
 
-  // 11. Generate suggested questions
-  app.post('/api/documents/:id/suggestions', async (req, res) => {
+  // 11. Generate suggested questions.
+  // Prefer POST /api/suggestions (supports all-documents mode); this per-document
+  // variant is kept for backward compatibility.
+  app.post('/api/documents/:id/suggestions', aiRateLimit, async (req, res) => {
     try {
       const { lastQuestion } = req.body;
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
       if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
-      const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '');
+      const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '', userId);
+      res.json({ suggestions });
+    } catch (error) {
+      console.error('Suggestions error:', error);
+      res.status(500).json({ error: 'Failed to generate suggestions' });
+    }
+  });
+
+  // 11b. Generate suggested questions scoped to the selected document, or across
+  // every document the caller owns when pdf_id is omitted.
+  app.post('/api/suggestions', aiRateLimit, async (req, res) => {
+    try {
+      const { pdf_id, lastQuestion } = req.body;
+      const userId = req.userId;
+      if (pdf_id && !db.getDocument(pdf_id, userId)) {
+        return res.status(404).json({ error: 'Document not found or access denied' });
+      }
+      const suggestions = await chatService.generateSuggestions(pdf_id || undefined, lastQuestion || '', userId);
       res.json({ suggestions });
     } catch (error) {
       console.error('Suggestions error:', error);
@@ -333,8 +406,24 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  // Boot maintenance: re-embed chunks stored by an older embedding algorithm,
+  // then remove upload files left behind by a crash or a manual DB reset.
+  try {
+    ingestionService.reindexIfNeeded();
+    const knownFiles = new Set(db.getDocuments().map((d) => d.filename));
+    for (const entry of fs.readdirSync(uploadDir)) {
+      // Never touch dotfiles (e.g. .gitkeep).
+      if (entry.startsWith('.')) continue;
+      if (!knownFiles.has(entry)) {
+        try { fs.unlinkSync(path.join(uploadDir, entry)); } catch {}
+      }
+    }
+  } catch (error) {
+    console.error('Boot maintenance failed:', error);
+  }
+
+  app.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
   });
 }
 

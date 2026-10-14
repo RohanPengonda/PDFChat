@@ -33,9 +33,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <p className="mt-2 text-sm text-[#6b7a99]">
             The interface hit an unexpected error. Reloading usually fixes it.
           </p>
-          <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-[#161b27] p-3 text-left text-[11px] text-[#a0b0cc]">
-            {this.state.error.message}
-          </pre>
+          {import.meta.env.DEV && (
+            <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-[#161b27] p-3 text-left text-[11px] text-[#a0b0cc]">
+              {this.state.error.message}
+            </pre>
+          )}
           <button
             onClick={this.handleReload}
             className="mt-4 rounded-lg bg-[#2979ff] px-4 py-2 text-sm font-medium text-white hover:bg-[#1565c0]"

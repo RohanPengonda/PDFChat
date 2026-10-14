@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { db, type Source } from './db';
 import { vectorStore } from './vector';
 import { generateEmbedding } from './embedding';
+import { sampleEvenly } from './util';
 import { Response } from 'express';
 import prompts from './prompts.json';
 
@@ -41,18 +42,6 @@ function setCachedSuggestions(key: string, value: string[]): void {
     suggestionCache.delete(oldest);
   }
   suggestionCache.set(key, { value, expires: now + SUGGESTION_TTL_MS });
-}
-
-// Evenly sample up to `max` items across the list so long documents are
-// represented end-to-end instead of only from their opening pages.
-function sampleEvenly<T>(items: T[], max: number): T[] {
-  if (items.length <= max) return items;
-  const step = items.length / max;
-  const sampled: T[] = [];
-  for (let i = 0; i < max; i++) {
-    sampled.push(items[Math.min(items.length - 1, Math.floor(i * step))]);
-  }
-  return sampled;
 }
 
 export const chatService = {
@@ -95,8 +84,10 @@ export const chatService = {
     }
     contents.push({ role: 'user', parts: [{ text: message }] });
 
-    // Persist the user message before generation so it is never lost on failure.
-    db.addMessage(chatId, 'user', message);
+    // Persist the user message before generation, but remember its id so it can
+    // be rolled back if no assistant answer is ever produced. Otherwise a failed
+    // turn leaves an orphan question that duplicates on retry.
+    const userMessageId = db.addMessage(chatId, 'user', message);
 
     // 3. Generate Embedding for Query
     const queryVector = generateEmbedding(message);
@@ -124,11 +115,12 @@ ${numberedContext}
     let retries = 3;
     let result: Awaited<ReturnType<typeof ai.models.generateContentStream>> | undefined;
 
-    const isRetryable = (e: any): boolean => {
-      if (e?.status === 503 || e?.status === 429) return true;
+    const isRetryable = (e: unknown): boolean => {
+      const err = e as { status?: number; message?: string; cause?: { message?: string } };
+      if (err?.status === 503 || err?.status === 429) return true;
       // Network-level failures surface as "fetch failed"/socket errors with no HTTP status
-      if (e?.status === undefined) {
-        const msg = `${e?.message || ''} ${e?.cause?.message || ''}`;
+      if (err?.status === undefined) {
+        const msg = `${err?.message || ''} ${err?.cause?.message || ''}`;
         return /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(msg);
       }
       return false;
@@ -142,14 +134,16 @@ ${numberedContext}
           config: { systemInstruction },
         });
         break;
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const err = error as { status?: number; message?: string };
         if (isRetryable(error) && retries > 1) {
           retries--;
           const delay = (3 - retries) * 3000;
-          console.log(`Model ${selectedModel} unavailable (${error?.status || error?.message}), retrying in ${delay/1000}s...`);
+          console.log(`Model ${selectedModel} unavailable (${err?.status || err?.message}), retrying in ${delay/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          console.error(`Model ${selectedModel} error:`, error?.message || error);
+          console.error(`Model ${selectedModel} error:`, err?.message || error);
+          db.deleteMessage(userMessageId);
           res.write(`data: ${JSON.stringify({ error: PUBLIC_ERROR_MESSAGE })}\n\n`);
           res.end();
           return;
@@ -158,6 +152,7 @@ ${numberedContext}
     }
 
     if (!result) {
+      db.deleteMessage(userMessageId);
       res.write(`data: ${JSON.stringify({ error: 'Model error' })}\n\n`);
       res.end();
       return;
@@ -183,9 +178,11 @@ ${numberedContext}
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // No complete answer was produced: roll back the question so history stays paired.
+      db.deleteMessage(userMessageId);
       if (!clientClosed) {
-        console.error('Stream interrupted:', error?.message || error);
+        console.error('Stream interrupted:', (error as Error)?.message || error);
         if (!res.writableEnded) {
           res.write(`data: ${JSON.stringify({ error: PUBLIC_ERROR_MESSAGE })}\n\n`);
           res.end();
@@ -196,11 +193,15 @@ ${numberedContext}
       res.off('close', onClose);
     }
 
-    // Client went away mid-stream: drop the partial answer rather than persisting it.
-    if (clientClosed) return;
+    // Client went away mid-stream: drop the partial answer and the question.
+    if (clientClosed) {
+      db.deleteMessage(userMessageId);
+      return;
+    }
 
-    // Never persist an empty assistant turn; surface it as an error instead.
+    // Never persist an empty assistant turn; roll the question back and surface an error.
     if (!fullResponse.trim()) {
+      db.deleteMessage(userMessageId);
       if (!res.writableEnded) {
         res.write(`data: ${JSON.stringify({ error: 'The model returned an empty response.' })}\n\n`);
         res.end();
@@ -261,12 +262,19 @@ ${numberedContext}
     res.end();
   },
 
-  async generateSuggestions(documentId: string, lastQuestion: string): Promise<string[]> {
-    const cacheKey = `${documentId}:${lastQuestion}`;
+  // When `documentId` is omitted the suggestions are drawn from every document
+  // the caller owns, so "All documents" mode also gets follow-ups.
+  async generateSuggestions(documentId: string | undefined, lastQuestion: string, userId?: string): Promise<string[]> {
+    const cacheKey = `${documentId ?? 'all'}:${lastQuestion}`;
     const cached = getCachedSuggestions(cacheKey);
     if (cached) return cached;
 
-    const allChunks = db.getAllChunks(documentId);
+    const scopeIds = documentId
+      ? [documentId]
+      : db.getDocuments(userId).map((d) => d.id);
+    if (scopeIds.length === 0) return [];
+
+    const allChunks = db.getChunksByDocumentIds(scopeIds);
     if (allChunks.length === 0) return [];
 
     const sampledChunks = sampleEvenly(allChunks, 6);
@@ -296,7 +304,7 @@ ${numberedContext}
         for (const question of candidates) {
           if (validated.length >= 3) break;
           const qVector = generateEmbedding(question);
-          const chunks = await vectorStore.query(qVector, 1, { pdf_ids: [documentId], query: question });
+          const chunks = await vectorStore.query(qVector, 1, { pdf_ids: scopeIds, query: question });
           if (chunks.length > 0) {
             validated.push(question);
           }
