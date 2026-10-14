@@ -77,8 +77,8 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 #### Backend (`server.ts`, `src/server/`)
 
 - **API server** — Express with JSON body parsing, Multer uploads, and SSE streaming for chat
-- **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, 1000/100 chunking, embedding generation, batch insert
-- **Retrieval** (`vector.ts`) — scans stored chunks, scores with hybrid similarity, applies a relevance gate, returns top-K
+- **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, then chunking (`chunking.ts`), embedding (`embedding.ts`), and batch insert
+- **Retrieval** (`vector.ts`) — scoped SQL fetch, hybrid similarity scoring (`similarity.ts`), relevance gate, returns top-K
 - **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, source payloads
 - **Prompts** (`prompts.json`) — system instruction, summary format, and suggestion prompt kept out of the code
 - **Persistence** (`db.ts`) — `better-sqlite3`, synchronous prepared statements, tables auto-created on boot, user-scoped data when auth enabled
@@ -228,6 +228,7 @@ AI document summary:
 | `npm run lint` | `eslint .` | ESLint (typescript-eslint + react-hooks) |
 | `npm run typecheck` | `tsc --noEmit` | Type check only |
 | `npm test` | `vitest run` | Unit tests for the pure server logic |
+| `npm run test:watch` | `vitest` | Unit tests in watch mode |
 | `npm start` | `tsx server.ts --prod` | Serves the built `dist/` output (`npm run build` first) |
 | `npm run clean` | `node -e "…rmSync('dist')"` | Cross-platform (Node) |
 
@@ -291,7 +292,19 @@ These are created on first run and are git-ignored:
 │   ├── components/        # ChatInterface, PDFViewer, UploadZone, SummaryModal
 │   ├── hooks/useChat.ts   # SSE consumption, message state, suggestions
 │   ├── lib/api.ts         # Typed fetch wrappers
-│   └── server/            # db.ts, ingestion.ts, vector.ts, chat.ts, prompts.json
+│   └── server/            # Server modules (see below)
+│       ├── db.ts          # SQLite schema + prepared statements
+│       ├── ingestion.ts   # PDF text extraction, chunking, embedding, insert
+│       ├── chunking.ts    # Pure page-aware chunking (1000/100)
+│       ├── embedding.ts   # Local lexical embedding (768-dim, versioned)
+│       ├── vector.ts      # Hybrid retrieval + relevance gate
+│       ├── similarity.ts  # Pure cosine + keyword scoring helpers
+│       ├── util.ts        # Safe error messages, even sampling
+│       ├── chat.ts        # Gemini streaming, citations, sources
+│       ├── prompts.json   # System / summary / suggestion prompts
+│       └── *.test.ts      # Vitest unit tests for the pure logic
+├── eslint.config.js       # ESLint (typescript-eslint + react-hooks)
+├── vitest.config.ts       # Vitest config
 ├── database.sqlite        # Generated
 ├── uploads/               # Generated
 └── .env.example
