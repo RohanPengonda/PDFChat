@@ -81,31 +81,91 @@ async function startServer() {
   // Bind to loopback by default so the API is not exposed on the LAN. Set
   // HOST=0.0.0.0 explicitly when running in a container or testing from a phone.
   const HOST = process.env.HOST || '127.0.0.1';
+  const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
 
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
 
-  // Simple auth middleware (optional token-based). If AUTH_TOKEN not set, allow all (dev-only).
+  // Token-based auth.
+  //
+  // Each token maps to a distinct tenant id so two callers can never read each
+  // other's documents/chats. Configure one or more via:
+  //   AUTH_TOKEN=<token>                  (single token, backwards compatible)
+  //   AUTH_TOKENS=<token>:<userId>,...    (multiple distinct users)
   //
   // Identity is derived server-side from the token only. Any client-supplied
-  // x-user-id header is ignored: trusting it let a caller impersonate another
-  // user and read/delete documents and chats they do not own.
-  const AUTH_TOKEN = process.env.AUTH_TOKEN;
-  const authRequired = !!AUTH_TOKEN;
+  // x-user-id header is ignored: trusting it would let a caller impersonate
+  // another user and read/delete documents and chats they do not own.
+  const authTokens = new Map<string, string>();
+  const registerToken = (token: string, userId: string) => {
+    if (token && userId && !authTokens.has(token)) authTokens.set(token, userId);
+  };
+  const deriveUserId = (token: string): string =>
+    crypto.createHash('sha256').update(token).digest('hex').slice(0, 24);
+  // Backwards compatible single token: its tenant id is the hash of the token,
+  // matching the id previously assigned so existing data stays reachable.
+  if (process.env.AUTH_TOKEN) {
+    registerToken(process.env.AUTH_TOKEN, deriveUserId(process.env.AUTH_TOKEN));
+  }
+  // Optional multi-user list: "token1:user1,token2:user2".
+  for (const pair of (process.env.AUTH_TOKENS || '').split(',')) {
+    const entry = pair.trim();
+    if (!entry) continue;
+    const sep = entry.indexOf(':');
+    if (sep === -1) {
+      console.warn(`Ignoring malformed AUTH_TOKENS entry (expected "token:userId"): ${entry}`);
+      continue;
+    }
+    registerToken(entry.slice(0, sep).trim(), entry.slice(sep + 1).trim());
+  }
+  const authRequired = authTokens.size > 0;
+
+  // Fail closed: a public deployment must not run without authentication.
+  if (!authRequired && isProduction) {
+    console.error('Error: authentication is required in production. Set AUTH_TOKEN or AUTH_TOKENS.');
+    process.exit(1);
+  }
+  if (!authRequired) {
+    console.warn('WARNING: no auth configured (AUTH_TOKEN/AUTH_TOKENS). All endpoints are public - do not expose this to the internet.');
+  }
+
   const safeEqual = (a: string, b: string): boolean => {
     const ha = crypto.createHash('sha256').update(a).digest();
     const hb = crypto.createHash('sha256').update(b).digest();
     return crypto.timingSafeEqual(ha, hb);
   };
-  app.use((req, res, next) => {
+  const extractToken = (req: express.Request): string => {
+    const header = req.headers.authorization || '';
+    return (header.replace(/^Bearer\s+/i, '') || (req.headers['x-api-token'] as string) || '').trim();
+  };
+  // Compare against every configured token (constant-time) so a valid token is
+  // found without leaking which one matched.
+  const resolveUserId = (token: string): string | undefined => {
+    if (!token) return undefined;
+    let matched: string | undefined;
+    for (const [candidate, userId] of authTokens) {
+      if (safeEqual(token, candidate)) matched = userId;
+    }
+    return matched;
+  };
+
+  // Public: lets the UI decide whether to show a login screen. Never requires a
+  // valid token itself.
+  app.get('/api/auth/status', (req, res) => {
+    if (!authRequired) return res.json({ required: false, authenticated: true });
+    res.json({ required: true, authenticated: resolveUserId(extractToken(req)) !== undefined });
+  });
+
+  // Only API routes require a token; the SPA shell and static assets stay
+  // public so the login screen itself can load.
+  app.use('/api', (req, res, next) => {
     if (!authRequired) {
       req.userId = undefined;
       return next();
     }
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '') || (req.headers['x-api-token'] as string);
-    if (token && AUTH_TOKEN && safeEqual(token, AUTH_TOKEN)) {
-      // One shared token maps to one tenant; identities cannot be spoofed per request.
-      req.userId = crypto.createHash('sha256').update(AUTH_TOKEN).digest('hex').slice(0, 24);
+    const userId = resolveUserId(extractToken(req));
+    if (userId !== undefined) {
+      req.userId = userId;
       return next();
     }
     res.status(401).json({ error: 'Unauthorized' });
@@ -387,7 +447,6 @@ async function startServer() {
   });
 
   // Serve the built SPA in production; use Vite middleware in development.
-  const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
   if (isProduction) {
     const distPath = path.join(__dirname, 'dist');
     if (!fs.existsSync(path.join(distPath, 'index.html'))) {

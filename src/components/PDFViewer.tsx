@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Loader2, ClipboardList } from "lucide-react";
+import { getAuthHeaders } from "../lib/api";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { clsx } from "clsx";
@@ -187,6 +188,11 @@ export function PDFViewer({
     };
   }, [currentPage, highlightText, fileUrl]);
 
+  // Memoized so the identity is stable across renders (react-pdf compares props
+  // with === and would otherwise refetch the document every render). The token
+  // is fixed for a mounted session; a login/logout remounts this component.
+  const pdfOptions = useMemo(() => ({ httpHeaders: getAuthHeaders() }), []);
+
   const bg = isDark ? "bg-[#161b27]" : "bg-[#f0ece6]";
   const cardBg = isDark ? "bg-[#1e2433]" : "bg-white";
   const border = isDark ? "border-[#2d3548]" : "border-[#d8d0c4]";
@@ -206,6 +212,7 @@ export function PDFViewer({
           <>
             <Document
               file={fileUrl}
+              options={pdfOptions}
               onLoadSuccess={onDocumentLoadSuccess}
               className="shadow-2xl shadow-black/40 rounded-lg"
               loading={

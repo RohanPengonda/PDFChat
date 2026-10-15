@@ -4,6 +4,7 @@ import { PDFViewer } from "./components/PDFViewer";
 import { ChatInterface } from "./components/ChatInterface";
 import { SummaryModal } from "./components/SummaryModal";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { LoginScreen } from "./components/LoginScreen";
 import { useToast } from "./components/Toast";
 import { useChat, Source } from "./hooks/useChat";
 import { api } from "./lib/api";
@@ -51,12 +52,51 @@ export default function App() {
     onConfirm: () => void | Promise<void>;
   } | null>(null);
   const toast = useToast();
+  const [authState, setAuthState] = useState<"checking" | "login" | "ready">(
+    "checking",
+  );
 
   useEffect(() => {
     setMode(selectedDocId ? "single" : "all");
   }, [selectedDocId]);
 
+  // Check whether the server requires a token and whether the stored one is
+  // valid, before loading any app data.
   useEffect(() => {
+    let cancelled = false;
+    api
+      .getAuthStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setAuthState(!status.required || status.authenticated ? "ready" : "login");
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState("login");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A request that gets 401 (expired/rotated token) drops us back to login.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      api.setToken(null);
+      try {
+        localStorage.removeItem("pdfchat.chatId");
+      } catch {
+        // Ignore storage access failures.
+      }
+      setChatId(null);
+      setAuthState((s) => (s === "ready" ? "login" : s));
+    };
+    window.addEventListener("pdfchat:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("pdfchat:unauthorized", onUnauthorized);
+  }, []);
+
+  // Load documents and the active chat only once authenticated.
+  useEffect(() => {
+    if (authState !== "ready") return;
     api.getDocuments().then(setDocuments).catch(console.error);
     const storedChatId = localStorage.getItem("pdfchat.chatId");
     if (storedChatId) {
@@ -70,7 +110,7 @@ export default function App() {
         })
         .catch(console.error);
     }
-  }, []);
+  }, [authState]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = isDark ? "dark" : "light";
@@ -432,6 +472,25 @@ export default function App() {
       isLoadingSummary={summaryLoadingId === selectedDocId}
     />
   );
+
+  if (authState === "checking") {
+    return (
+      <div
+        className={clsx(
+          "flex h-dvh items-center justify-center font-sans",
+          T.app,
+        )}
+      >
+        <div className="flex items-center gap-2 text-sm opacity-60">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+        </div>
+      </div>
+    );
+  }
+
+  if (authState === "login") {
+    return <LoginScreen onAuthenticated={() => setAuthState("ready")} isDark={isDark} />;
+  }
 
   return (
     <div className={clsx("flex h-dvh overflow-hidden font-sans", T.app)}>

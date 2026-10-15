@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, getAuthHeaders } from '../lib/api';
 import { useToast } from '../components/Toast';
 
 export interface Source {
@@ -79,12 +79,17 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ message: content, chatId, mode, pdf_id, model }),
         signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error('Chat failed');
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.dispatchEvent(new CustomEvent('pdfchat:unauthorized'));
+        }
+        throw new Error('Chat failed');
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No reader');

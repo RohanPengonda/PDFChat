@@ -29,7 +29,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **📱 Adaptive UI**: Light/dark themes, sidebar drawer on tablet, tab-based Docs / PDF / Chat navigation on mobile
 - **🗂️ Library management**: Upload, delete individual documents, or clear the whole library (files and chunks together)
 - **💾 Persistent chats**: Messages stored in SQLite and reloaded on refresh
-- **🔐 Optional authentication**: Token-based auth via `AUTH_TOKEN` for multi-user scenarios (user-scoped documents/chats)
+- **🔐 Token authentication**: The UI shows a login screen when auth is enabled; every request (API, SSE stream, and PDF fetch) carries `Authorization: Bearer <token>`. `AUTH_TOKEN` gives one shared workspace, `AUTH_TOKENS` maps each token to a distinct user id for real isolation. Required in production.
 
 ---
 
@@ -201,7 +201,8 @@ AI document summary:
    ```env
     GEMINI_API_KEY=your_api_key_here
     # Optional: DISABLE_HMR=true to turn off Vite HMR
-    # Optional: AUTH_TOKEN=your_secret_token for multi-user auth
+    # Auth (required in production): AUTH_TOKEN=<token> or
+    #   AUTH_TOKENS=<token>:<userId>,<token2>:<userId2> for multiple users
     # Optional: HOST=0.0.0.0 to expose on the LAN (defaults to 127.0.0.1)
     # Optional: PORT=3000
     ```
@@ -269,6 +270,7 @@ These are created on first run and are git-ignored:
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
+| `GET` | `/api/auth/status` | Public. Returns `{ required, authenticated }` so the UI knows whether to show the login screen |
 | `POST` | `/api/upload` | Multipart `file` upload (PDF-only, 50MB); ingests and indexes the PDF. Protected if auth enabled. |
 | `GET` | `/api/documents` | List indexed documents |
 | `GET` | `/api/documents/:id/content` | Stream the stored PDF |
