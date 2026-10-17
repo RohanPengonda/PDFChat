@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { api, ApiError, getAuthHeaders } from '../lib/api';
 import { useToast } from '../components/Toast';
 
@@ -71,7 +72,7 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
     abortRef.current = controller;
 
     // Add user message immediately
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content };
+    const userMsg: Message = { id: uuidv4(), role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamingContent('');
@@ -136,7 +137,7 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
       // Never render an empty assistant bubble; surface the failure instead.
       if (currentText) {
         const assistantMsg: Message = {
-          id: (Date.now() + 1).toString(),
+          id: uuidv4(),
           role: 'assistant',
           content: currentText,
           sources: currentSources,

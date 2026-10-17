@@ -133,16 +133,23 @@ export const db = {
 
   getDocuments: (userId?: string): DocumentRow[] => {
     if (userId) {
-      return sqlite.prepare('SELECT * FROM documents WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC').all(userId) as DocumentRow[];
+      return sqlite.prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC').all(userId) as DocumentRow[];
     }
     return sqlite.prepare('SELECT * FROM documents ORDER BY created_at DESC').all() as DocumentRow[];
   },
 
   getDocument: (id: string, userId?: string): DocumentRow | undefined => {
     if (userId) {
-      return sqlite.prepare('SELECT * FROM documents WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId) as DocumentRow | undefined;
+      return sqlite.prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?').get(id, userId) as DocumentRow | undefined;
     }
     return sqlite.prepare('SELECT * FROM documents WHERE id = ?').get(id) as DocumentRow | undefined;
+  },
+
+  // Assign documents uploaded before authentication was enabled to a single
+  // tenant so they remain reachable (and are not leaked to every caller).
+  backfillLegacyDocuments: (userId: string): number => {
+    const res = sqlite.prepare('UPDATE documents SET user_id = ? WHERE user_id IS NULL').run(userId);
+    return res.changes;
   },
 
   setDocumentSummary: (id: string, summary: string): void => {

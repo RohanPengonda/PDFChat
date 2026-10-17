@@ -1,9 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Copy, Check, ArrowUpRight, Plus } from "lucide-react";
 import { Message, Source } from "../hooks/useChat";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { Components } from "react-markdown";
 import { clsx } from "clsx";
 import { api } from "../lib/api";
+
+// Render anchors from model output but strip any non-http(s) href (e.g.
+// javascript: URLs) so a malicious response cannot execute script in the client.
+const SafeLink = ({ href, children, ...props }: { href?: string; children?: React.ReactNode } & Record<string, unknown>) => {
+  const safeHref = href && /^https?:\/\//i.test(href) ? href : undefined;
+  if (!safeHref) {
+    return <span {...(props as Record<string, unknown>)}>{children}</span>;
+  }
+  return <a href={safeHref} {...(props as Record<string, unknown>)} rel="noopener noreferrer" target="_blank">{children}</a>;
+};
+
+const markdownComponents: Components = { a: SafeLink as unknown as React.ComponentType<React.AnchorHTMLAttributes<HTMLAnchorElement>> };
 
 interface ChatInterfaceProps {
   messages: Message[];
@@ -169,7 +181,7 @@ export function ChatInterface({
                   msg.role === "user" && "prose-invert text-white",
                 )}
               >
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
               </div>
               {msg.role === "assistant" && (
                 <button
@@ -234,7 +246,7 @@ export function ChatInterface({
                     isDark ? "prose-invert" : "",
                   )}
                 >
-                  <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                  <ReactMarkdown components={markdownComponents}>{streamingContent}</ReactMarkdown>
                 </div>
               ) : (
                 <div className={clsx("flex items-center gap-2", subtext)}>

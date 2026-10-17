@@ -383,6 +383,6 @@ ${sampleText}`;
       }
     }
     // Throw rather than return a sentinel string, so callers never cache a failure.
-    throw new Error('Could not generate summary.');
+    throw new Error('Failed to generate summary');
   }
 };

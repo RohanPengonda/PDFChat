@@ -86,6 +86,16 @@ async function startServer() {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
 
+  // Content Security Policy: block inline/external script injection and
+  // javascript: URLs so a malicious model response cannot run JS in the client.
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self';",
+    );
+    next();
+  });
+
   // Token-based auth.
   //
   // Each token maps to a distinct tenant id so two callers can never read each
@@ -193,6 +203,15 @@ async function startServer() {
       }
 
       const userId = req.userId;
+      // Per-user upload quota (only enforced when authentication is active).
+      if (userId) {
+        const MAX_FILES_PER_USER = Number(process.env.MAX_FILES_PER_USER) || 100;
+        const userDocs = db.getDocuments(userId);
+        if (userDocs.length >= MAX_FILES_PER_USER) {
+          try { fs.unlinkSync(req.file.path); } catch {}
+          return res.status(400).json({ error: 'Upload limit reached. Delete some documents first.' });
+        }
+      }
       const documentId = await ingestionService.processDocument(req.file, userId);
       // Match the shape returned by GET /api/documents so the client can render
       // the document immediately without waiting for a refetch.
@@ -276,11 +295,22 @@ async function startServer() {
       res.once('close', stopHeartbeat);
       res.once('finish', stopHeartbeat);
 
+      // Hard cap on total stream time so a hung model cannot hold a connection
+      // (and a worker thread) open indefinitely.
+      const streamTimeout = setTimeout(() => {
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ error: 'The model took too long to respond. Please try again.' })}\n\n`);
+          res.end();
+        }
+      }, 120_000);
+      const stopStreamTimeout = () => clearTimeout(streamTimeout);
+
       const userId = req.userId;
       try {
         await chatService.generateResponse(message, chatId, mode, pdf_id, res, model, userId);
       } finally {
         stopHeartbeat();
+        stopStreamTimeout();
       }
       
       // End response is handled in generateResponse or here if it returns
@@ -322,13 +352,13 @@ async function startServer() {
     try {
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
-      if (doc) {
+      const deleted = db.deleteDocument(req.params.id, userId);
+      if (deleted && doc?.filename) {
         const filePath = path.join(uploadDir, doc.filename);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
       }
-      db.deleteDocument(req.params.id, userId);
       vectorStore.invalidate();
       res.json({ success: true });
     } catch (error) {
@@ -465,24 +495,39 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  // Boot maintenance: re-embed chunks stored by an older embedding algorithm,
-  // then remove upload files left behind by a crash or a manual DB reset.
-  try {
-    ingestionService.reindexIfNeeded();
-    const knownFiles = new Set(db.getDocuments().map((d) => d.filename));
-    for (const entry of fs.readdirSync(uploadDir)) {
-      // Never touch dotfiles (e.g. .gitkeep).
-      if (entry.startsWith('.')) continue;
-      if (!knownFiles.has(entry)) {
-        try { fs.unlinkSync(path.join(uploadDir, entry)); } catch {}
-      }
-    }
-  } catch (error) {
-    console.error('Boot maintenance failed:', error);
-  }
-
-  app.listen(PORT, HOST, () => {
+  app.listen(PORT, HOST, async () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
+
+    // Boot maintenance: re-embed chunks stored by an older embedding algorithm,
+    // then remove upload files left behind by a crash or a manual DB reset.
+    // Runs after listen so the server starts accepting connections immediately;
+    // re-indexing is batched to avoid blocking the event loop for long stretches.
+    try {
+      await ingestionService.reindexIfNeeded();
+
+      // Assign documents uploaded before authentication was enabled to the
+      // single-token tenant so they stay reachable (and are not leaked to every
+      // caller once auth is required).
+      if (process.env.AUTH_TOKEN && !process.env.AUTH_TOKENS) {
+        const legacyUserId = deriveUserId(process.env.AUTH_TOKEN);
+        const backfilled = db.backfillLegacyDocuments(legacyUserId);
+        if (backfilled > 0) {
+          vectorStore.invalidate();
+          console.log(`Backfilled ${backfilled} legacy document(s) to user ${legacyUserId}.`);
+        }
+      }
+
+      const knownFiles = new Set(db.getDocuments().map((d) => d.filename));
+      for (const entry of fs.readdirSync(uploadDir)) {
+        // Never touch dotfiles (e.g. .gitkeep).
+        if (entry.startsWith('.')) continue;
+        if (!knownFiles.has(entry)) {
+          try { fs.unlinkSync(path.join(uploadDir, entry)); } catch {}
+        }
+      }
+    } catch (error) {
+      console.error('Boot maintenance failed:', error);
+    }
   });
 }
 

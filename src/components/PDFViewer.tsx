@@ -189,9 +189,11 @@ export function PDFViewer({
   }, [currentPage, highlightText, fileUrl]);
 
   // Memoized so the identity is stable across renders (react-pdf compares props
-  // with === and would otherwise refetch the document every render). The token
-  // is fixed for a mounted session; a login/logout remounts this component.
-  const pdfOptions = useMemo(() => ({ httpHeaders: getAuthHeaders() }), []);
+  // with === and would otherwise refetch the document every render). Recompute
+  // when the auth token changes (e.g. rotation or logout/login) so requests
+  // never go out with a stale token.
+  const headersKey = JSON.stringify(getAuthHeaders());
+  const pdfOptions = useMemo(() => ({ httpHeaders: getAuthHeaders() }), [headersKey]);
 
   const bg = isDark ? "bg-[#161b27]" : "bg-[#f0ece6]";
   const cardBg = isDark ? "bg-[#1e2433]" : "bg-white";

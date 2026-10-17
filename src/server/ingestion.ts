@@ -59,18 +59,29 @@ export const ingestionService = {
     }
   },
 
-  // Re-embed chunks stored with an older embedding algorithm version. Local and
-  // synchronous, so this runs at boot and keeps old libraries searchable.
-  reindexIfNeeded(): number {
+  // Re-embed chunks stored with an older embedding algorithm version. Processed
+  // in small batches that yield to the event loop so boot maintenance does not
+  // block the server from accepting connections. Local and synchronous per chunk.
+  async reindexIfNeeded(batchSize = 50): Promise<number> {
     const stale = db.getChunksNeedingReindex();
-    for (const chunk of stale) {
-      db.setChunkEmbedding(chunk.id, generateEmbedding(chunk.content));
+    let processed = 0;
+    for (let i = 0; i < stale.length; i += batchSize) {
+      const batch = stale.slice(i, i + batchSize);
+      for (const chunk of batch) {
+        db.setChunkEmbedding(chunk.id, generateEmbedding(chunk.content));
+        processed++;
+      }
+      // Yield between batches so the event loop can accept connections / handle
+      // requests while a large backlog is re-indexed.
+      if (i + batchSize < stale.length) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
-    if (stale.length > 0) {
+    if (processed > 0) {
       vectorStore.invalidate();
-      console.log(`Re-indexed ${stale.length} chunk(s) with embedding v${EMBEDDING_VERSION}.`);
+      console.log(`Re-indexed ${processed} chunk(s) with embedding v${EMBEDDING_VERSION}.`);
     }
-    return stale.length;
+    return processed;
   },
 
   async extractTextFromPDF(filePath: string): Promise<{ pageNumber: number; text: string }[]> {
