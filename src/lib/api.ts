@@ -156,7 +156,7 @@ export const api = {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ pdf_id: pdfId, lastQuestion }),
     });
-    if (!res.ok) return [];
+    if (!res.ok) return fail(res, 'Failed to get suggestions');
     const data = await res.json();
     return data.suggestions || [];
   }

@@ -16,6 +16,24 @@ export interface TextChunk {
 export const CHUNK_SIZE = 1000;
 export const CHUNK_OVERLAP = 100;
 
+// Matches sentence-ending punctuation followed by whitespace.
+const SENTENCE_BOUNDARY = /[.!?]\s+/;
+
+// Try to split at a sentence boundary near the end of the window so chunks
+// don't break mid-sentence. Searches back up to 200 chars from `end`.
+function findSentenceSplit(text: string, start: number, end: number): number {
+  if (end >= text.length) return end;
+  const searchStart = Math.max(start + 50, end - 200);
+  const window = text.slice(searchStart, end);
+  let best = -1;
+  let m: RegExpExecArray | null;
+  SENTENCE_BOUNDARY.lastIndex = 0;
+  while ((m = SENTENCE_BOUNDARY.exec(window)) !== null) {
+    best = searchStart + m.index + m[0].length;
+  }
+  return best !== -1 ? best : end;
+}
+
 export function chunkPages(pages: PageText[]): TextChunk[] {
   const chunks: TextChunk[] = [];
   let globalChunkIndex = 0;
@@ -38,7 +56,10 @@ export function chunkPages(pages: PageText[]): TextChunk[] {
 
     let start = 0;
     while (start < text.length) {
-      const end = Math.min(start + CHUNK_SIZE, text.length);
+      let end = Math.min(start + CHUNK_SIZE, text.length);
+      if (end < text.length) {
+        end = findSentenceSplit(text, start, end);
+      }
       const chunkText = text.slice(start, end);
       // Skip whitespace-only tails (e.g. the final overlap window).
       if (chunkText.trim().length > 0) {
@@ -50,7 +71,9 @@ export function chunkPages(pages: PageText[]): TextChunk[] {
           charEndPos: end,
         });
       }
-      start += CHUNK_SIZE - CHUNK_OVERLAP;
+      if (end >= text.length) break;
+      // Guarantee forward progress while retaining overlap.
+      start = Math.max(start + 1, end - CHUNK_OVERLAP);
     }
   }
 

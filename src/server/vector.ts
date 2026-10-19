@@ -87,7 +87,7 @@ class LocalVectorStore implements VectorStore {
 
     return results
       .sort((a, b) => b.score - a.score)
-      .filter((r) => r.metadata.keyword_score > 0 && r.score > 0.15)
+      .filter((r) => r.score > 0.1)
       .slice(0, topK);
   }
 }

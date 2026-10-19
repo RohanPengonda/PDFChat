@@ -228,7 +228,9 @@ async function startServer() {
   app.get('/api/documents', async (req, res) => {
     try {
       const userId = req.userId;
-      const docs = await db.getDocuments(userId);
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const offset = req.query.offset ? Number(req.query.offset) : undefined;
+      const docs = await db.getDocuments(userId, limit, offset);
       res.json(docs);
     } catch (error) {
       console.error('List documents error:', error);
@@ -258,7 +260,9 @@ async function startServer() {
         if (!db.getChat(req.params.chatId, userId)) {
           return res.status(404).json({ error: 'Chat not found' });
         }
-        const messages = await db.getMessages(req.params.chatId, userId);
+        const limit = req.query.limit ? Number(req.query.limit) : undefined;
+        const offset = req.query.offset ? Number(req.query.offset) : undefined;
+        const messages = await db.getMessages(req.params.chatId, userId, limit, offset);
         res.json(messages);
     } catch (error) {
         console.error('Get chat history error:', error);

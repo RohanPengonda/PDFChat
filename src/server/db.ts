@@ -131,11 +131,19 @@ export const db = {
     return id;
   },
 
-  getDocuments: (userId?: string): DocumentRow[] => {
+  getDocuments: (userId?: string, limit?: number, offset?: number): DocumentRow[] => {
     if (userId) {
-      return sqlite.prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC').all(userId) as DocumentRow[];
+      const base = 'SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC';
+      if (limit !== undefined) {
+        return sqlite.prepare(`${base} LIMIT ? OFFSET ?`).all(userId, limit, offset ?? 0) as DocumentRow[];
+      }
+      return sqlite.prepare(base).all(userId) as DocumentRow[];
     }
-    return sqlite.prepare('SELECT * FROM documents ORDER BY created_at DESC').all() as DocumentRow[];
+    const base = 'SELECT * FROM documents ORDER BY created_at DESC';
+    if (limit !== undefined) {
+      return sqlite.prepare(`${base} LIMIT ? OFFSET ?`).all(limit, offset ?? 0) as DocumentRow[];
+    }
+    return sqlite.prepare(base).all() as DocumentRow[];
   },
 
   getDocument: (id: string, userId?: string): DocumentRow | undefined => {
@@ -227,14 +235,24 @@ export const db = {
     sqlite.prepare('DELETE FROM messages WHERE id = ?').run(id);
   },
 
-  getMessages: (chatId: string, userId?: string): MessageRow[] => {
+  getMessages: (chatId: string, userId?: string, limit?: number, offset?: number): MessageRow[] => {
     let rows: RawMessageRow[];
     if (userId) {
       const chat = sqlite.prepare('SELECT id FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(chatId, userId);
       if (!chat) return [];
-      rows = sqlite.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC, rowid ASC').all(chatId) as RawMessageRow[];
+      const base = 'SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC, rowid ASC';
+      if (limit !== undefined) {
+        rows = sqlite.prepare(`${base} LIMIT ? OFFSET ?`).all(chatId, limit, offset ?? 0) as RawMessageRow[];
+      } else {
+        rows = sqlite.prepare(base).all(chatId) as RawMessageRow[];
+      }
     } else {
-      rows = sqlite.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC, rowid ASC').all(chatId) as RawMessageRow[];
+      const base = 'SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC, rowid ASC';
+      if (limit !== undefined) {
+        rows = sqlite.prepare(`${base} LIMIT ? OFFSET ?`).all(chatId, limit, offset ?? 0) as RawMessageRow[];
+      } else {
+        rows = sqlite.prepare(base).all(chatId) as RawMessageRow[];
+      }
     }
     return rows.map((r) => ({
       ...r,

@@ -157,7 +157,7 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
         const scope = mode === 'single' ? pdf_id : undefined;
         api.getSuggestions(scope, content)
           .then(result => { if (result.length > 0) setSuggestions(result); })
-          .catch(() => {});
+          .catch(() => toast('Failed to load suggested questions.', 'error'));
       }
     } catch (error) {
       if (controller.signal.aborted) return;
