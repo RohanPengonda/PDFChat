@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, Loader2, ArrowRight } from "lucide-react";
+import { Lock, Loader2, ArrowRight, RotateCw } from "lucide-react";
 import { clsx } from "clsx";
 import { api } from "../lib/api";
 
@@ -37,6 +37,12 @@ export function LoginScreen({ onAuthenticated, isDark = false }: LoginScreenProp
     } finally {
       setBusy(false);
     }
+  };
+
+  const clearToken = () => {
+    api.setToken(null);
+    setToken("");
+    setError(null);
   };
 
   const bg = isDark ? "bg-[#161b27]" : "bg-[#ede8e0]";
@@ -109,6 +115,17 @@ export function LoginScreen({ onAuthenticated, isDark = false }: LoginScreenProp
             <p className="text-xs text-red-500 leading-snug">{error}</p>
           )}
 
+          <div className="flex items-center gap-2 text-[10px] leading-relaxed">
+            <RotateCw className="w-3 h-3 opacity-50" />
+            <button
+              onClick={clearToken}
+              className="underline text-[#8a7d6b] hover:text-[#b5651d] dark:text-[#6b7a99] dark:hover:text-[#5b9cf6] disabled:opacity-50"
+              disabled={busy}
+            >
+              Clear stored token
+            </button>
+          </div>
+
           <button
             type="submit"
             disabled={busy || !token.trim()}
@@ -131,6 +148,11 @@ export function LoginScreen({ onAuthenticated, isDark = false }: LoginScreenProp
 
         <p className={clsx("mt-5 text-[11px] leading-relaxed", subtext)}>
           Tokens are configured on the server via AUTH_TOKEN or AUTH_TOKENS.
+        </p>
+
+        <p className={clsx("mt-3 text-[10px] leading-relaxed", subtext)}>
+          Forgot your token? Contact your server administrator — tokens cannot
+          be recovered or reset from the app.
         </p>
       </div>
     </div>

@@ -17,6 +17,7 @@ import {
   ClipboardList,
   Moon,
   Sun,
+  ArrowLeft,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -637,7 +638,7 @@ export default function App() {
               )}
             </button>
           </div>
-          <div className={clsx("flex-1 overflow-hidden", T.chat)}>
+          <div className={clsx("flex-1 overflow-hidden relative", T.chat)}>
             {mobileTab === "sidebar" && (
               <div className={clsx("h-full overflow-y-auto", T.sidebar)}>
                 <SidebarContent chrome={false} />
@@ -645,6 +646,23 @@ export default function App() {
             )}
             {mobileTab === "pdf" && pdfPanel}
             {mobileTab === "chat" && chatPanel}
+
+            {/* Floating affordance on mobile so a user reading a cited PDF can
+              return to chat without hunting through the bottom tab bar. */}
+            {mobileTab === "pdf" && selectedDocId && (
+              <button
+                onClick={() => setMobileTab("chat")}
+                className={clsx(
+                  "fixed bottom-20 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium shadow-lg",
+                  isDark
+                    ? "bg-[#252d40] text-[#5b9cf6] border border-[#2d3548]"
+                    : "bg-white text-[#b5651d] border border-[#d8d0c4]",
+                )}
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Back to chat
+              </button>
+            )}
           </div>
           <div
             className={clsx(

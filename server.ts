@@ -88,11 +88,21 @@ async function startServer() {
 
   // Content Security Policy: block inline/external script injection and
   // javascript: URLs so a malicious model response cannot run JS in the client.
+  // In development we relax script-src and connect-src so Vite HMR / React
+  // Fast Refresh can work; production keeps the strict policy.
+  const isDev = process.env.NODE_ENV !== 'production';
   app.use((_req, res, next) => {
-    res.setHeader(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self';",
-    );
+    if (isDev) {
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self';",
+      );
+    } else {
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self';",
+      );
+    }
     next();
   });
 

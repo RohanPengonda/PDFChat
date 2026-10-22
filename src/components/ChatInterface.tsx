@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Copy, Check, ArrowUpRight, Plus } from "lucide-react";
 import { Message, Source } from "../hooks/useChat";
 import ReactMarkdown, { Components } from "react-markdown";
+import { gfmRemarkPlugin } from "../lib/gfm";
 import { clsx } from "clsx";
 import { api } from "../lib/api";
 
@@ -181,7 +182,7 @@ export function ChatInterface({
                   msg.role === "user" && "prose-invert text-white",
                 )}
               >
-                <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
+                <ReactMarkdown components={markdownComponents} remarkPlugins={[gfmRemarkPlugin()]}>{msg.content}</ReactMarkdown>
               </div>
               {msg.role === "assistant" && (
                 <button
@@ -246,7 +247,7 @@ export function ChatInterface({
                     isDark ? "prose-invert" : "",
                   )}
                 >
-                  <ReactMarkdown components={markdownComponents}>{streamingContent}</ReactMarkdown>
+                  <ReactMarkdown components={markdownComponents} remarkPlugins={[gfmRemarkPlugin()]}>{streamingContent}</ReactMarkdown>
                 </div>
               ) : (
                 <div className={clsx("flex items-center gap-2", subtext)}>
