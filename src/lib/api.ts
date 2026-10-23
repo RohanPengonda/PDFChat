@@ -138,6 +138,15 @@ export const api = {
     return res.json();
   },
 
+  async deleteChat(chatId: string) {
+    const res = await fetch(`/api/chats/${chatId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!res.ok) return fail(res, 'Failed to delete chat');
+    return res.json();
+  },
+
   async getDocumentSummary(documentId: string): Promise<string> {
     const res = await fetch(`/api/documents/${documentId}/summary`, {
       method: 'POST',

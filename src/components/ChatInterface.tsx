@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Copy, Check, ArrowUpRight, Plus } from "lucide-react";
+import { Send, Loader2, Copy, Check, ArrowUpRight, Plus, Trash2 } from "lucide-react";
 import { Message, Source } from "../hooks/useChat";
 import ReactMarkdown, { Components } from "react-markdown";
 import { gfmRemarkPlugin } from "../lib/gfm";
@@ -33,6 +33,7 @@ interface ChatInterfaceProps {
   documents: { id: string; filename: string; original_name: string }[];
   selectedDocId: string | null;
   onNewChat?: () => void;
+  onClearChat?: () => void;
 }
 
 export function ChatInterface({
@@ -50,6 +51,7 @@ export function ChatInterface({
   documents,
   selectedDocId,
   onNewChat,
+  onClearChat,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -142,6 +144,19 @@ export function ChatInterface({
           >
             <Plus className="w-3.5 h-3.5" />
             New
+          </button>
+        )}
+        {onClearChat && (
+          <button
+            onClick={onClearChat}
+            className={clsx(
+              "flex items-center gap-1 text-[11px] font-medium rounded-lg px-2 py-1 transition-opacity hover:opacity-70",
+              sourceLink,
+            )}
+            title="Clear chat"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear
           </button>
         )}
       </div>

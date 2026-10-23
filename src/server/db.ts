@@ -223,6 +223,17 @@ export const db = {
     sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(title, id);
   },
 
+  // Delete chat and its messages
+  deleteChat: (id: string, userId?: string): number => {
+    if (userId) {
+      const chat = sqlite.prepare('SELECT id FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId);
+      if (!chat) return 0;
+    }
+    sqlite.prepare('DELETE FROM messages WHERE chat_id = ?').run(id);
+    const res = sqlite.prepare('DELETE FROM chats WHERE id = ?').run(id);
+    return res.changes;
+  },
+
   // Messages
   addMessage: (chatId: string, role: 'user' | 'assistant', content: string, sources?: Source[]): string => {
     const id = uuidv4();

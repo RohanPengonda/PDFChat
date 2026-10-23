@@ -192,6 +192,21 @@ export default function App() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!chatId) return;
+    if (!window.confirm("Clear this chat? This cannot be undone.")) return;
+    try {
+      await api.deleteChat(chatId);
+      const chat = await api.createChat();
+      localStorage.setItem("pdfchat.chatId", chat.id);
+      setChatId(chat.id);
+      setSuggestions([]);
+    } catch (e) {
+      console.error("Clear chat failed:", e);
+      toast("Could not clear chat.", "error");
+    }
+  };
+
   const handleDeleteDoc = (docId: string) => {
     setConfirmState({
       title: "Delete document",
@@ -441,6 +456,7 @@ export default function App() {
       documents={documents}
       selectedDocId={selectedDocId}
       onNewChat={handleNewChat}
+      onClearChat={handleClearChat}
     />
   );
 
@@ -653,7 +669,7 @@ export default function App() {
               <button
                 onClick={() => setMobileTab("chat")}
                 className={clsx(
-                  "fixed bottom-20 right-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium shadow-lg",
+                  "fixed bottom-24 left-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium shadow-lg",
                   isDark
                     ? "bg-[#252d40] text-[#5b9cf6] border border-[#2d3548]"
                     : "bg-white text-[#b5651d] border border-[#d8d0c4]",

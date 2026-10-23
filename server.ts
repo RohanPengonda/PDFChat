@@ -418,6 +418,19 @@ async function startServer() {
     }
   });
 
+  // 10. Delete chat
+  app.delete('/api/chats/:chatId', async (req, res) => {
+    try {
+      const userId = req.userId;
+      const deleted = db.deleteChat(req.params.chatId, userId);
+      if (!deleted) return res.status(404).json({ error: 'Chat not found' });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete chat error:', error);
+      res.status(500).json({ error: 'Failed to delete chat' });
+    }
+  });
+
   // 10. Generate document summary
   app.post('/api/documents/:id/summary', aiRateLimit, async (req, res) => {
     try {
