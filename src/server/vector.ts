@@ -117,6 +117,8 @@ class LocalVectorStore implements VectorStore {
       chunks = db.getAllChunks();
     }
 
+    if (chunks.length === 0) return [];
+
     const query = filter?.query || '';
     const expandedQueries = filter?.expandedQueries || [];
 
@@ -124,31 +126,43 @@ class LocalVectorStore implements VectorStore {
     const queryVectors = [vector];
     for (const eq of expandedQueries) {
       if (!eq || eq === query) continue;
-      queryVectors.push(this.embedQuery(eq));
+      queryVectors.push(await this.embedQuery(eq));
     }
 
-    // Score each chunk against every query vector, taking the max (OR semantics
-    // for expanded queries improves synonym recall).
+    // Compute keyword scores for all chunks (cheap string ops).
+    const keywordScores = new Map<string, number>();
+    for (const chunk of chunks) {
+      let bestKw = keywordMatch(query, chunk.content);
+      for (const eq of expandedQueries) {
+        const s = keywordMatch(eq, chunk.content);
+        if (s > bestKw) bestKw = s;
+      }
+      keywordScores.set(chunk.id, bestKw);
+    }
+
+    // Keyword pre-filter: select a bounded candidate pool for the expensive
+    // cosine computation. Chunks outside the pool get vectorScore = 0 so they
+    // can still rank on keyword alone but don't pay the O(n) cosine cost.
+    const candidateLimit = Math.min(chunks.length, Math.max(topK * 20, 100));
+    const sortedByKeyword = [...chunks].sort(
+      (a, b) => (keywordScores.get(b.id) || 0) - (keywordScores.get(a.id) || 0)
+    );
+    const candidateIds = new Set(
+      sortedByKeyword.slice(0, candidateLimit).map((c) => c.id)
+    );
+
+    // Score each chunk: cosine only for candidates, keyword for all.
     const scored = chunks.map((chunk) => {
       const chunkVector = this.parseEmbedding(chunk);
       let bestVectorScore = 0;
-      for (const qv of queryVectors) {
-        const sim = cosineSimilarity(qv, chunkVector);
-        if (sim > bestVectorScore) bestVectorScore = sim;
+      if (candidateIds.has(chunk.id)) {
+        for (const qv of queryVectors) {
+          const sim = cosineSimilarity(qv, chunkVector);
+          if (sim > bestVectorScore) bestVectorScore = sim;
+        }
       }
-
-      // Keyword match against the original query and all expansions.
-      let bestKeywordScore = keywordMatch(query, chunk.content);
-      for (const eq of expandedQueries) {
-        const s = keywordMatch(eq, chunk.content);
-        if (s > bestKeywordScore) bestKeywordScore = s;
-      }
-
-      // Reciprocal Rank Fusion style hybrid: combine normalized ranks rather
-      // than raw scores so a strong keyword match can't drown out a strong
-      // vector match and vice versa. Here we approximate with a tuned weighted
-      // sum on the max scores.
-      const hybridScore = bestVectorScore * 0.45 + bestKeywordScore * 0.55;
+      const kw = keywordScores.get(chunk.id) || 0;
+      const hybridScore = bestVectorScore * 0.45 + kw * 0.55;
 
       return {
         id: chunk.id,
@@ -158,7 +172,7 @@ class LocalVectorStore implements VectorStore {
           page_number: chunk.page_number,
           pdf_id: chunk.document_id,
           file_name: chunk.file_name,
-          keyword_score: Math.round(bestKeywordScore * 100),
+          keyword_score: Math.round(kw * 100),
         },
       };
     });
@@ -174,7 +188,7 @@ class LocalVectorStore implements VectorStore {
 
   // Embed a short query string on demand for expansion vectors. Reuses the same
   // hashing function as ingestion so vectors stay comparable.
-  private embedQuery(text: string): number[] {
+  private async embedQuery(text: string): Promise<number[]> {
     return generateEmbedding(text);
   }
 }

@@ -90,7 +90,7 @@ export const chatService = {
     const userMessageId = db.addMessage(chatId, 'user', message);
 
     // 3. Generate Embedding for Query
-    const queryVector = generateEmbedding(message);
+    const queryVector = await generateEmbedding(message);
 
     // 4. Retrieve Context (already scoped to the caller's documents)
     const relevantChunks = allowedDocumentIds.length === 0
@@ -303,7 +303,7 @@ ${numberedContext}
         const validated: string[] = [];
         for (const question of candidates) {
           if (validated.length >= 3) break;
-          const qVector = generateEmbedding(question);
+          const qVector = await generateEmbedding(question);
           const chunks = await vectorStore.query(qVector, 1, { pdf_ids: scopeIds, query: question });
           if (chunks.length > 0) {
             validated.push(question);

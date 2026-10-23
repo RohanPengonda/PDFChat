@@ -28,8 +28,9 @@ export const ingestionService = {
       const BATCH_SIZE = 5;
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async (chunk) => {
-          const embedding = generateEmbedding(chunk.text);
+        // Sequential within batch to avoid hammering the embedding API.
+        for (const chunk of batch) {
+          const embedding = await generateEmbedding(chunk.text);
           const chunkId = uuidv4();
           db.createChunk(
             chunkId,
@@ -41,7 +42,7 @@ export const ingestionService = {
             chunk.charStartPos,
             chunk.charEndPos
           );
-        }));
+        }
       }
 
       vectorStore.invalidate();
@@ -68,7 +69,8 @@ export const ingestionService = {
     for (let i = 0; i < stale.length; i += batchSize) {
       const batch = stale.slice(i, i + batchSize);
       for (const chunk of batch) {
-        db.setChunkEmbedding(chunk.id, generateEmbedding(chunk.content));
+        const embedding = await generateEmbedding(chunk.content);
+        db.setChunkEmbedding(chunk.id, embedding);
         processed++;
       }
       // Yield between batches so the event loop can accept connections / handle
