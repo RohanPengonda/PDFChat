@@ -131,18 +131,24 @@ export async function generateSemanticEmbedding(text: string): Promise<number[]>
 
   const ai = getSemanticAi();
   if (ai) {
-    try {
-      const result = await ai.models.embedContent({
-        model: SEMANTIC_MODEL,
-        contents: [{ role: 'user', parts: [{ text }] }],
-      });
-      const values = result.embeddings?.[0]?.values;
-      if (Array.isArray(values) && values.length === EMBEDDING_DIM) {
-        return normalizeVector(values);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await ai.models.embedContent({
+          model: SEMANTIC_MODEL,
+          contents: [{ role: 'user', parts: [{ text }] }],
+        });
+        const values = result.embeddings?.[0]?.values;
+        if (Array.isArray(values) && values.length === EMBEDDING_DIM) {
+          return normalizeVector(values);
+        }
+      } catch (error) {
+        const err = error as { status?: number; message?: string };
+        const retryable = err?.status === 503 || err?.status === 429;
+        if (!retryable || attempt === 2) break;
+        await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000));
       }
-    } catch {
-      // API failure: fall through to lexical below.
     }
+    // Fall through to lexical on any failure.
   }
   return generateLexicalEmbedding(text);
 }

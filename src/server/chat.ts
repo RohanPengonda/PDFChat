@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { db, type Source } from './db';
-import { vectorStore, type VectorResult } from './vector';
+import { vectorStore } from './vector';
 import { generateEmbedding } from './embedding';
 import { sampleEvenly } from './util';
 import { Response } from 'express';
@@ -42,65 +42,6 @@ function setCachedSuggestions(key: string, value: string[]): void {
     suggestionCache.delete(oldest);
   }
   suggestionCache.set(key, { value, expires: now + SUGGESTION_TTL_MS });
-}
-
-// Relevance threshold below which we abstain instead of guessing.
-const RELEVANCE_THRESHOLD = 0.25;
-
-// Generate paraphrases of a question for multi-query retrieval.
-async function generateParaphrases(question: string): Promise<string[]> {
-  try {
-    const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: `Generate 2 short paraphrases of this question for document search. Return ONLY a JSON array of 2 strings, nothing else. Example: ["paraphrase 1", "paraphrase 2"]\n\nQuestion: "${question}"` }] }],
-    });
-    const raw = result.text || '[]';
-    const cleaned = raw.trim().replace(/^```json\n?|^```\n?|\n?```$/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed)) return parsed.slice(0, 2).filter((x): x is string => typeof x === 'string');
-  } catch {
-    // Paraphrase generation is optional; proceed with original query only.
-  }
-  return [];
-}
-
-// Merge multiple result sets by chunk id, keeping the highest score.
-function mergeResults(...resultSets: VectorResult[][]): VectorResult[] {
-  const byId = new Map<string, VectorResult>();
-  for (const results of resultSets) {
-    for (const r of results) {
-      const existing = byId.get(r.id);
-      if (!existing || r.score > existing.score) {
-        byId.set(r.id, r);
-      }
-    }
-  }
-  return [...byId.values()].sort((a, b) => b.score - a.score);
-}
-
-// Re-rank chunks by relevance using Gemini.
-async function rerankResults(question: string, chunks: VectorResult[]): Promise<VectorResult[]> {
-  if (chunks.length === 0) return chunks;
-  try {
-    const context = chunks
-      .map((c, i) => `[${i + 1}] ${c.metadata.text.slice(0, 300)}`)
-      .join('\n\n');
-    const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: `Rank these document chunks by relevance to the question. Return ONLY a JSON array of chunk numbers in order from most to least relevant. Example: [3, 1, 2]\n\nQuestion: "${question}"\n\nChunks:\n${context}` }] }],
-    });
-    const raw = result.text || '[]';
-    const cleaned = raw.trim().replace(/^```json\n?|^```\n?|\n?```$/g, '').trim();
-    const order = JSON.parse(cleaned);
-    if (Array.isArray(order)) {
-      return order
-        .map((n: number) => chunks[n - 1])
-        .filter((c): c is VectorResult => c !== undefined);
-    }
-  } catch {
-    // Re-ranking is optional; return original order.
-  }
-  return chunks;
 }
 
 export const chatService = {
@@ -151,34 +92,10 @@ export const chatService = {
     // 3. Generate Embedding for Query
     const queryVector = await generateEmbedding(message);
 
-    // 4. Multi-query retrieval: paraphrase, query each, merge results.
-    let relevantChunks: VectorResult[] = [];
-    if (allowedDocumentIds.length > 0) {
-      const paraphrases = await generateParaphrases(message);
-      const allQueries = [message, ...paraphrases];
-      const resultSets = await Promise.all(
-        allQueries.map(async (q, idx) => {
-          const qVector = idx === 0 ? queryVector : await generateEmbedding(q);
-          return vectorStore.query(qVector, 10, { pdf_ids: allowedDocumentIds, query: q });
-        })
-      );
-      const merged = mergeResults(...resultSets);
-
-      // 5. Re-rank with Gemini for precision.
-      const reranked = await rerankResults(message, merged.slice(0, 10));
-
-      // 6. Abstain if nothing clears the relevance threshold.
-      if (reranked.length === 0 || reranked[0].score < RELEVANCE_THRESHOLD) {
-        const abstainText = "I couldn't find this information in your documents.";
-        db.addMessage(chatId, 'assistant', abstainText, []);
-        res.write(`data: ${JSON.stringify({ text: abstainText })}\n\n`);
-        res.write(`data: ${JSON.stringify({ sources: [] })}\n\n`);
-        res.end();
-        return;
-      }
-
-      relevantChunks = reranked.slice(0, 5);
-    }
+    // 4. Retrieve Context (already scoped to the caller's documents)
+    const relevantChunks = allowedDocumentIds.length === 0
+      ? []
+      : await vectorStore.query(queryVector, 5, { pdf_ids: allowedDocumentIds, query: message });
 
     // 5. Construct Prompt - number directly from array to avoid index mismatch
     const numberedContext = relevantChunks.map((chunk, idx) =>
@@ -195,7 +112,7 @@ ${numberedContext}
     const selectedModel = model && ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
 
     // Retry logic for transient errors (503/429 rate limits and network drops)
-    let retries = 3;
+    let retries = 5;
     let result: Awaited<ReturnType<typeof ai.models.generateContentStream>> | undefined;
 
     const isRetryable = (e: unknown): boolean => {
@@ -218,12 +135,17 @@ ${numberedContext}
         });
         break;
       } catch (error: unknown) {
-        const err = error as { status?: number; message?: string };
+        const err = error as { status?: number; message?: string; cause?: { message?: string } };
         if (isRetryable(error) && retries > 1) {
           retries--;
-          const delay = (3 - retries) * 3000;
-          console.log(`Model ${selectedModel} unavailable (${err?.status || err?.message}), retrying in ${delay/1000}s...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          // Honor Retry-After header if present, otherwise exponential backoff.
+          const retryAfter = err?.cause?.message || '';
+          const headerMatch = retryAfter.match(/retry-after:\s*(\d+)/i);
+          const delayMs = headerMatch
+            ? parseInt(headerMatch[1], 10) * 1000
+            : (6 - retries) * 5000;
+          console.log(`Model ${selectedModel} unavailable (${err?.status || err?.message}), retrying in ${delayMs / 1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
         } else {
           console.error(`Model ${selectedModel} error:`, err?.message || error);
           db.deleteMessage(userMessageId);
