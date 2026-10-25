@@ -122,6 +122,28 @@ class LocalVectorStore implements VectorStore {
     const query = filter?.query || '';
     const expandedQueries = filter?.expandedQueries || [];
 
+    // Build SQL-side keyword pre-filter so we don't load every chunk into
+    // memory. Split the query into words and match chunks containing any of
+    // them. If nothing matches, fall back to all chunks (semantic-only search).
+    const queryWords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
+    let sqlFilteredChunks: ChunkRow[] | null = null;
+    if (queryWords.length > 0) {
+      const conditions = queryWords.map(() => 'LOWER(content) LIKE ?').join(' OR ');
+      const params = queryWords.map((w) => `%` + w + `%`);
+      try {
+        const likeChunks = (filter && Array.isArray(filter.pdf_ids)
+          ? db.getChunksByDocumentIdsLike(filter.pdf_ids, conditions, params)
+          : db.getAllChunksLike(conditions, params)) as ChunkRow[];
+        if (likeChunks.length > 0) sqlFilteredChunks = likeChunks;
+      } catch {
+        // Fall through to all chunks if LIKE query fails.
+      }
+    }
+    chunks = sqlFilteredChunks ?? chunks;
+
     // Build per-query vectors: the original query plus any expansions.
     const queryVectors = [vector];
     for (const eq of expandedQueries) {
@@ -129,7 +151,7 @@ class LocalVectorStore implements VectorStore {
       queryVectors.push(await this.embedQuery(eq));
     }
 
-    // Compute keyword scores for all chunks (cheap string ops).
+    // Compute keyword scores for all loaded chunks (cheap string ops).
     const keywordScores = new Map<string, number>();
     for (const chunk of chunks) {
       let bestKw = keywordMatch(query, chunk.content);

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
-import { generateEmbedding, EMBEDDING_VERSION } from './embedding';
+import { generateEmbedding, EMBEDDING_VERSION, clearEmbeddingCache } from './embedding';
 import { vectorStore } from './vector';
 import { chunkPages, type TextChunk } from './chunking';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -81,6 +81,7 @@ export const ingestionService = {
     }
     if (processed > 0) {
       vectorStore.invalidate();
+      clearEmbeddingCache();
       console.log(`Re-indexed ${processed} chunk(s) with embedding v${EMBEDDING_VERSION}.`);
     }
     return processed;

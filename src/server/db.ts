@@ -186,6 +186,31 @@ export const db = {
       .all(...documentIds) as ChunkRow[];
   },
 
+  // Like getChunksByDocumentIds but with an additional SQL-side LIKE filter so
+  // only chunks containing at least one query word are loaded into memory.
+  getChunksByDocumentIdsLike: (
+    documentIds: string[],
+    conditions: string,
+    params: string[],
+  ): ChunkRow[] => {
+    if (documentIds.length === 0) return [];
+    const placeholders = documentIds.map(() => '?').join(',');
+    return sqlite
+      .prepare(
+        `SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id IN (${placeholders}) AND (${conditions})`,
+      )
+      .all(...documentIds, ...params) as ChunkRow[];
+  },
+
+  // Like getAllChunks but with an additional SQL-side LIKE filter.
+  getAllChunksLike: (conditions: string, params: string[]): ChunkRow[] => {
+    return sqlite
+      .prepare(
+        `SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE (${conditions})`,
+      )
+      .all(...params) as ChunkRow[];
+  },
+
   // Chunks whose stored embedding predates the current algorithm version.
   getChunksNeedingReindex: (): { id: string; content: string }[] => {
     return sqlite

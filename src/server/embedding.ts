@@ -26,6 +26,11 @@ const SEMANTIC_MODEL = 'text-embedding-004';
 
 let semanticAi: GoogleGenAI | undefined;
 
+// In-memory cache for query embeddings so repeated questions don't hit the
+// Gemini API again. Keyed by the normalized text.
+const embeddingCache = new Map<string, number[]>();
+const EMBEDDING_CACHE_MAX = 500;
+
 function getSemanticAi(): GoogleGenAI | undefined {
   if (!process.env.GEMINI_API_KEY) return undefined;
   if (!semanticAi) {
@@ -129,6 +134,10 @@ function normalizeVector(values: number[]): number[] {
 export async function generateSemanticEmbedding(text: string): Promise<number[]> {
   if (!text) return new Array(EMBEDDING_DIM).fill(0);
 
+  const cacheKey = text.toLowerCase().trim();
+  const cached = embeddingCache.get(cacheKey);
+  if (cached) return cached;
+
   const ai = getSemanticAi();
   if (ai) {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -139,7 +148,14 @@ export async function generateSemanticEmbedding(text: string): Promise<number[]>
         });
         const values = result.embeddings?.[0]?.values;
         if (Array.isArray(values) && values.length === EMBEDDING_DIM) {
-          return normalizeVector(values);
+          const normalized = normalizeVector(values);
+          // Cache the result, evicting oldest entries if over cap.
+          if (embeddingCache.size >= EMBEDDING_CACHE_MAX) {
+            const firstKey = embeddingCache.keys().next().value;
+            if (firstKey !== undefined) embeddingCache.delete(firstKey);
+          }
+          embeddingCache.set(cacheKey, normalized);
+          return normalized;
         }
       } catch (error) {
         const err = error as { status?: number; message?: string };
@@ -161,3 +177,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
 // Sync lexical embedding, kept for callers that cannot await (e.g. tests).
 export { generateLexicalEmbedding };
+
+// Clear the embedding query cache. Call when the embedding algorithm version
+// changes so stale cached vectors are not reused.
+export function clearEmbeddingCache(): void {
+  embeddingCache.clear();
+}
