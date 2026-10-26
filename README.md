@@ -18,11 +18,12 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 ## ✨ Key Features
 
 - **📊 Sentence-aware chunking**: Splits each page into ~1000-character chunks with 100-character overlap, snapped to the nearest sentence boundary so a chunk never cuts a sentence in half; the page number and character offsets of every chunk are kept
-- **🔀 Hybrid retrieval**: Combines cosine similarity over local lexical embeddings (40%) with weighted keyword matching (60%) to rank relevant chunks
+- **🔀 Hybrid retrieval**: Embeds chunks with Gemini `text-embedding-004` (768-dim semantic vectors, with a local lexical hasher as fallback) and blends cosine similarity (45%) with weighted keyword matching (55%), then diversifies the results with MMR
 - **💬 Streaming AI answers**: Real-time token streaming over Server-Sent Events, powered by Google Gemini with automatic retry on 429/503 and network failures
-- **🧠 Conversation memory**: The last 20 turns are replayed to the model so follow-up questions resolve pronouns and references
+- **🧠 Conversation memory**: The last 20 messages (10 exchanges) are replayed to the model so follow-up questions resolve pronouns and references
 - **📍 Precision citations**: Only chunks the model actually cited (`[1]`, `[2]`, …) are returned, each with page number, matched sentence, and a confidence score
 - **🧠 Click-to-source**: Clicking a citation opens the source PDF at the cited page with the matching text highlighted
+- **🧹 Clear chat**: A **Clear** button in the chat header deletes the current conversation (messages included) and starts a fresh one
 - **📄 AI document summaries**: One-click structured summary generated per document, shown in a modal on upload
 - **💡 Suggested follow-ups**: Up to 3 AI-generated next questions, each validated against the document so you never get a dead-end suggestion
 - **🎯 Single or all documents**: Scope a question to the selected PDF or query across your whole library
@@ -32,7 +33,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **💾 Persistent chats**: Messages stored in SQLite and reloaded on refresh
 - **🔐 Token authentication**: The UI shows a login screen when auth is enabled; every request (API, SSE stream, and PDF fetch) carries `Authorization: Bearer <token>`. `AUTH_TOKEN` gives one shared workspace, `AUTH_TOKENS` maps each token to a distinct user id for real isolation. Required in production.
 - **📤 Resilient uploads**: Uploads run over `XMLHttpRequest` so the zone can show a live progress bar, retry automatically up to 3 times with linear backoff on network or server failure, and surface the server's error message with a manual "Retry" button
-- **🛡️ Hardened request handling**: Content-Security-Policy on every response, model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 120s hard cap on chat streams, and strict tenant scoping on every document/chat read and delete
+- **🛡️ Hardened request handling**: Content-Security-Policy on every response (relaxed only in development for Vite HMR), model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 30-requests/minute per-IP budget on AI endpoints, a 120s hard cap on chat streams, and strict tenant scoping on every document/chat read and delete
 - **📃 Paginated reads**: `GET /api/documents` and `GET /api/chats/:chatId` accept `limit` / `offset`, so large libraries and long chat histories can be paged instead of loaded in one shot
 
 ---
@@ -63,8 +64,9 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
                      │   documents / chunks /    │
                      │   chats / messages        │
                      │ - uploads/ (PDF files)    │
-                     │ - local lexical embedding │
-                     │   + hybrid scoring        │
+                     │ - Gemini embeddings +     │
+                     │   lexical fallback        │
+                     │ - hybrid scoring + MMR    │
                      └────────────────────────────┘
 ```
 
@@ -74,7 +76,7 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 
 - **React 19 + TypeScript + Vite** — component architecture with hooks, no global state library
 - **PDF rendering** — `react-pdf` renders the uploaded file and highlights the cited sentence
-- **Chat interface** — reads the SSE stream with a `ReadableStream` reader, renders answers as Markdown (`react-markdown`)
+- **Chat interface** — reads the SSE stream with a `ReadableStream` reader, renders answers as Markdown (`react-markdown`) plus a small local GFM plugin for strikethrough and task lists
 - **Layout** — three breakpoints: fixed sidebar + split view (desktop), drawer + split view (tablet), bottom-tab single panel (mobile)
 - **Theming** — token maps for light/dark applied with `clsx`, plus `data-theme` and `color-scheme` on `<html>`
 
@@ -82,11 +84,11 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 
 - **API server** — Express with JSON body parsing, Multer uploads, and SSE streaming for chat
 - **Guardrails** (`server.ts`) — token auth middleware, CSP header, per-IP rate limiting on AI endpoints, per-user upload quota, upload magic-byte validation, and a hard timeout on chat streams
-- **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, then chunking (`chunking.ts`), embedding (`embedding.ts`), and batch insert
-- **Retrieval** (`vector.ts`) — scoped SQL fetch, hybrid similarity scoring (`similarity.ts`), relevance gate, returns top-K
-- **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, source payloads
+- **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, then chunking (`chunking.ts`), embedding through Gemini with a lexical fallback (`embedding.ts`), and batch insert
+- **Retrieval** (`vector.ts`) — scoped SQL fetch with a keyword pre-filter, hybrid similarity scoring (`similarity.ts`), MMR diversification, relevance gate, returns top-K
+- **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, cached suggestions, source payloads
 - **Prompts** (`prompts.json`) — system instruction, summary format, and suggestion prompt kept out of the code
-- **Persistence** (`db.ts`) — `better-sqlite3`, synchronous prepared statements, tables auto-created on boot, user-scoped data when auth enabled
+- **Persistence** (`db.ts`) — `better-sqlite3`, synchronous prepared statements, tables and indexes auto-created on boot, user-scoped data when auth enabled
 
 ### Data Flow Architecture
 
@@ -95,16 +97,16 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 ```
 PDF Upload (PDF-only, magic-byte checked, 50MB limit, per-user quota) → PDF.js text extraction (per page)
            → Chunking (≤1000 chars, 100 overlap, snapped to sentence boundaries)
-           → Lexical embedding v2 (768-dim) → SQLite insert (content, page, offsets, vector)
+           → Gemini text-embedding-004 (768-dim; local lexical fallback) → SQLite insert (content, page, offsets, vector, version)
 ```
 
-Embeddings are computed **locally** — no embedding API is called during ingestion. Each chunk records the `embedding_version` it was built with; chunks from an older algorithm are transparently re-embedded on boot. Re-indexing runs *after* the server starts accepting connections and processes chunks in batches of 50 that yield to the event loop, so a large backlog never blocks startup.
+Embeddings are produced by Gemini `text-embedding-004` (768 dimensions, L2-normalized) during ingestion. If the embedding API is unavailable, a deterministic local lexical hasher (word tokens, character n-grams) takes over, so uploads and search never fail outright. Each chunk records the `embedding_version` it was built with; chunks from an older algorithm are transparently re-embedded on boot. Re-indexing runs *after* the server starts accepting connections and processes chunks in batches of 50 that yield to the event loop, so a large backlog never blocks startup.
 
 #### Query Processing
 
 ```
-User query → Local lexical embedding → Hybrid scoring (0.4·cosine + 0.6·keyword)
-           → Relevance gate (hybrid score > 0.1) → Top 5 chunks → Numbered context [1]…[5] in system instruction
+User query → Gemini embedding (cached) → Hybrid scoring (0.45·cosine + 0.55·keyword)
+           → MMR diversification → Relevance gate (hybrid score > 0.1) → Top 5 chunks → Numbered context [1]…[5] in system instruction
            → Gemini stream → SSE text frames → final sources frame
 ```
 
@@ -118,16 +120,19 @@ Sources frame (post-stream) ► citation chips with confidence %
 
 ### Key Design Decisions
 
-- **Hybrid retrieval weighting** — keyword score is weighted 60% because the local embedding captures lexical structure (word tokens, character trigrams, word bigrams) rather than true semantics; keyword matching carries most of the retrieval signal
+- **Hybrid retrieval weighting** — semantic cosine contributes 45% and keyword matching 55%. Keyword still carries slightly more weight because questions are short and exact terms (names, clause numbers, jargon) often matter more than paraphrase, while the semantic vector handles synonyms and related concepts that a lexical-only hash cannot match
 - **Relevance gate** — a chunk must clear a hybrid score of `0.1` before it can reach the model, so weak matches never enter the prompt. The threshold was loosened from `0.15` (with a mandatory keyword hit) to `0.1` because the tightened rule discarded chunks that matched strongly on the vector term alone
 - **Positional keyword weighting** — earlier query words weigh more (`1/(i+1)`), so the first terms in a question dominate matching
+- **MMR diversification** — after hybrid scoring, maximal marginal relevance (`λ = 0.7`) re-ranks the candidate pool so the top 5 are not five near-duplicate chunks from the same paragraph
+- **Bounded retrieval cost** — a SQL `LIKE` pre-filter narrows the row set to chunks containing at least one query word, and cosine similarity is computed only for the keyword-ranked top candidates (`max(topK × 20, 100)`); chunks outside that pool can still rank on keyword alone. Query embeddings are cached in memory (500 entries), so repeated questions skip the Gemini embedding call
 - **Citation parsing** — the model is asked to cite `[n]`; only those chunks are returned as sources, with the sentence best matching the question used as the preview
 - **Chunking** — ~1000 characters with 100 characters of overlap, per page, retaining character offsets for locating text in the viewer. The window end is snapped back to the last sentence boundary (searching up to 200 characters) so chunks stay semantically whole, and the cursor is advanced to `end - overlap` to guarantee forward progress
-- **Bounded concurrency** — chunks are embedded and inserted in batches of 5
+- **Batched ingestion** — chunks are embedded and inserted in batches of 5, sequentially within each batch so the embedding API is not hammered
+- **Suggestion caching** — validated follow-ups are memoized for 10 minutes (max 200 entries), so re-opening a document does not spend another Gemini call
 - **Upload resilience** — `fetch` cannot report upload progress, so the upload zone uses `XMLHttpRequest` for byte-level progress and retries failed requests (network errors and 4xx/5xx) up to 3 times with 1s/2s/3s backoff before surfacing the error
-- **Defense in depth** — CSP blocks injected scripts, Markdown links are filtered to `http(s)` so a malicious model answer cannot ship a `javascript:` URL, the PDF viewer refreshes its auth headers when the token changes, and AI endpoints are rate limited per IP
-- **No external services** — storage, retrieval, and embeddings are all local, so the only network dependency is the Gemini API
-- **Retry policy** — 3 attempts with 3s/6s backoff for 429/503 and network-level errors; failures are surfaced to the UI as an SSE `error` frame, and a hard 120s timeout closes a stream that stalls
+- **Defense in depth** — CSP blocks injected scripts (relaxed only in development for Vite HMR, strict in production), Markdown links are filtered to `http(s)` so a malicious model answer cannot ship a `javascript:` URL, the PDF viewer refreshes its auth headers when the token changes, and AI endpoints are rate limited per IP
+- **Local storage, hosted embeddings** — SQLite, retrieval, and PDF storage are local; the only network dependency is Gemini (chat/completions plus embeddings), and the lexical fallback keeps search working if the embedding endpoint is down
+- **Retry policy** — chat streams make up to 5 attempts on 429/503 and network-level errors, honoring `Retry-After` when present and otherwise backing off 10s/15s/20s/25s; failures are surfaced to the UI as an SSE `error` frame, and a hard 120s timeout closes a stream that stalls
 
 ---
 
@@ -141,7 +146,7 @@ Sources frame (post-stream) ► citation chips with confidence %
 - **Tailwind CSS 4** — utility styling via `@tailwindcss/vite` (no `tailwind.config.js`), with `@tailwindcss/typography` for rendered Markdown
 - **@fontsource/inter** — self-hosted Inter font, no external font CDN
 - **react-pdf** — client-side PDF rendering
-- **react-markdown** — Markdown rendering for streamed answers
+- **react-markdown** — Markdown rendering for streamed answers, with a local GFM plugin for strikethrough and task lists
 - **lucide-react** — icons
 - **clsx** — conditional class composition
 
@@ -152,14 +157,14 @@ Sources frame (post-stream) ► citation chips with confidence %
 - **better-sqlite3** — embedded database (`database.sqlite`)
 - **multer** — multipart PDF uploads to `uploads/`
 - **pdfjs-dist** (legacy build) — server-side text extraction
-- **@google/genai** — Gemini SDK for chat, summaries, and suggestions
+- **@google/genai** — Gemini SDK for chat, summaries, suggestions, and embeddings
 - **dotenv** — loads `.env` before the server starts
 - **uuid** — document/chunk/message IDs
 
 ### AI & Data
 
-- **Google Gemini API** — `gemini-2.5-flash` (default) and `gemini-2.5-pro`
-- **Local lexical embedding** — 768-dimension token/n-gram hash vectors, L2-normalized (no external embedding provider), versioned for automatic re-indexing
+- **Google Gemini API** — `gemini-2.5-flash` (default) and `gemini-2.5-pro` for chat, summaries, and suggestions; `text-embedding-004` for retrieval embeddings
+- **Semantic embeddings with a lexical fallback** — 768-dimension `text-embedding-004` vectors, L2-normalized, with an in-process token/n-gram hasher when the embedding API fails; versioned for automatic re-indexing and memoized for repeated queries
 - **SQLite vector store** — embeddings stored as JSON in the `chunks` table; retrieval is scoped in SQL and parsed vectors are cached in memory
 
 ---
@@ -209,7 +214,7 @@ AI document summary:
    Then edit `.env`:
 
    ```env
-    GEMINI_API_KEY=your_api_key_here
+    GEMINI_API_KEY=your_api_key_here   # used for chat and embeddings
     # Optional: DISABLE_HMR=true to turn off Vite HMR
     # Auth (required in production): AUTH_TOKEN=<token> or
     #   AUTH_TOKENS=<token>:<userId>,<token2>:<userId2> for multiple users
@@ -267,6 +272,7 @@ These are created on first run and are git-ignored:
 3. **Ask** — type a question, or click one of the suggested follow-ups.
 4. **Verify** — read the answer and its citations; each chip shows a confidence score and the matched sentence.
 5. **Navigate** — click a citation to jump to that page in the PDF panel with the text highlighted.
+6. **Reset** — the **Clear** button in the chat header deletes the current conversation and starts a new one.
 
 ### Query Examples
 
@@ -293,6 +299,7 @@ These are created on first run and are git-ignored:
 | `POST` | `/api/chats` | Create a chat session |
 | `GET` | `/api/chats/:chatId` | Fetch message history for a chat; accepts optional `?limit=` and `?offset=` |
 | `PATCH` | `/api/chats/:id/title` | Rename a chat |
+| `DELETE` | `/api/chats/:chatId` | Delete a chat and all of its messages |
 | `POST` | `/api/chat` | `{ message, chatId, mode, pdf_id?, model? }` → SSE stream of `text` frames then a `sources` frame |
 | `POST` | `/api/documents/:id/summary` | Generate a document summary |
 | `POST` | `/api/documents/:id/suggestions` | Generate validated follow-up questions for one document |
@@ -308,12 +315,13 @@ These are created on first run and are git-ignored:
 │   ├── components/        # ChatInterface, PDFViewer, UploadZone, SummaryModal
 │   ├── hooks/useChat.ts   # SSE consumption, message state, suggestions
 │   ├── lib/api.ts         # Typed fetch wrappers
+│   ├── lib/gfm.ts         # Small GFM remark plugin (strikethrough, task lists)
 │   └── server/            # Server modules (see below)
-│       ├── db.ts          # SQLite schema + prepared statements
+│       ├── db.ts          # SQLite schema, indexes, prepared statements
 │       ├── ingestion.ts   # PDF text extraction, chunking, embedding, insert
 │       ├── chunking.ts    # Pure page-aware, sentence-aligned chunking (1000/100)
-│       ├── embedding.ts   # Local lexical embedding (768-dim, versioned)
-│       ├── vector.ts      # Hybrid retrieval + relevance gate
+│       ├── embedding.ts   # Gemini text-embedding-004 + lexical fallback (768-dim, versioned)
+│       ├── vector.ts      # SQL pre-filter, hybrid retrieval, MMR, relevance gate
 │       ├── similarity.ts  # Pure cosine + keyword scoring helpers
 │       ├── util.ts        # Safe error messages, even sampling
 │       ├── chat.ts        # Gemini streaming, citations, sources
@@ -332,9 +340,9 @@ These are created on first run and are git-ignored:
 
 **PDF text extraction**: Text layer quality varies widely across PDFs (scans, broken encodings, multi-column layouts). The extractor joins PDF.js text items with spaces, which is reliable for born-digital documents but degrades on scanned ones — OCR would be the next step.
 
-**Retrieval without a real embedding model**: The local 768-dim vector hashes word tokens, character trigrams and word bigrams — more signal than a plain character hash, but still lexical rather than semantic. It is fast, dependency-free and (via `embedding_version`) automatically re-indexed when the algorithm changes, but it cannot match synonyms or paraphrase, which is exactly why keyword matching is weighted more heavily in the hybrid score.
+**Semantic embeddings need an offline fallback**: Gemini `text-embedding-004` finally gives the app true semantic matching, so paraphrases and synonyms retrieve correctly. But it adds a network call per chunk during ingestion and per unique query (cached for repeats), so the local 768-dim lexical hasher is kept as a fallback: if the embedding endpoint 429s or the network drops, ingestion and search keep working on lexical vectors instead of failing. Because stored vectors are only comparable when both sides use the same algorithm, every chunk records its `embedding_version` and stale rows are re-embedded in the background on boot.
 
-**Relevance gating matters**: Returning the top-5 chunks unconditionally injected unrelated context into prompts. Requiring a keyword hit and a minimum hybrid score measurably reduced off-topic answers. The rule was later relaxed to a pure score threshold (`> 0.1`) after it turned out to discard chunks that matched strongly on the vector term alone — a good reminder that a gate tuned for one embedding algorithm needs re-tuning when the algorithm changes.
+**Relevance gating matters**: Returning the top-5 chunks unconditionally injected unrelated context into prompts. Requiring a keyword hit and a minimum hybrid score measurably reduced off-topic answers. The rule was later relaxed to a pure score threshold (`> 0.1`) after it turned out to discard chunks that matched strongly on the vector term alone — a good reminder that a gate tuned for one embedding algorithm needs re-tuning when the algorithm changes, which is exactly what happened when semantic embeddings replaced the lexical vectors.
 
 **Chunk boundaries decide answer quality**: Fixed-width windows cut sentences in half, so a retrieved chunk could carry a fragment instead of a complete claim. Snapping the window end to the nearest sentence boundary keeps chunks self-contained, and advancing the cursor by `end - overlap` guarantees the loop always makes progress.
 
@@ -346,21 +354,21 @@ These are created on first run and are git-ignored:
 
 **Streaming resilience**: Transient 503/429 responses and dropped connections are common with the Gemini API. Retrying with backoff and forwarding errors as an SSE `error` frame keeps the UI responsive instead of hanging on a spinner.
 
-**Retrieval scaling**: Retrieval is scoped to the caller's documents in SQL and parsed vectors are cached in memory (invalidated whenever chunks change), so unrelated libraries are never loaded. Scoring is still linear in the number of in-scope chunks — fine for a personal library, but an approximate nearest-neighbour index would be required at large scale.
+**Retrieval scaling**: Retrieval is scoped to the caller's documents in SQL, a `LIKE` pre-filter avoids loading chunks with no query term, and parsed vectors are cached in memory (invalidated whenever chunks change). Cosine similarity is only computed for the keyword-ranked candidate pool, and MMR runs over at most `2 × topK` results. That is plenty for a personal library, but the pre-filter still scans the scoped rows and ranking is linear in the candidate set — an approximate nearest-neighbour index is the next step.
 
 ---
 
 ## 🔮 Future Improvements
 
-**Real embeddings**: Swap the local hash embedding for a hosted embedding model (Gemini, Vertex AI, or a local sentence-transformer) to capture semantic similarity.
+**Embedding upgrades**: Move to a newer embedding model (Gemini, Vertex AI, or a local sentence-transformer) and batch embedding calls at ingestion so large PDFs cost fewer round-trips; `embedding_version` already handles background re-indexing.
 
-**ANN vector index**: Move from full-table scans to an approximate nearest-neighbour index (e.g. sqlite-vec or a dedicated vector DB) for large libraries.
+**ANN vector index**: Move from the `LIKE` pre-filter and in-memory scoring to an approximate nearest-neighbour index (e.g. sqlite-vec or a dedicated vector DB) for large libraries.
 
 **Multi-modal ingestion**: Extract and describe images, charts, and tables via vision-language models.
 
-**Richer context assembly**: Hierarchical chunking, query expansion, and multi-stage retrieval for long documents.
+**Richer context assembly**: Hierarchical chunking and multi-stage retrieval for long documents.
 
-**Smarter memory**: Summarize or window long conversations so context survives beyond the last 20 turns.
+**Smarter memory**: Summarize or window long conversations so context survives beyond the last 20 messages.
 
 **Paged clients**: The list endpoints already accept `limit` / `offset`; the UI still loads full libraries and histories, so virtual scrolling and infinite history belong here.
 
