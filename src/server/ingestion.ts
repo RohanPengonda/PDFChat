@@ -102,6 +102,13 @@ export const ingestionService = {
     try {
       pdfDocument = await loadingTask.promise;
       const numPages = pdfDocument.numPages;
+      // Cap page count to prevent PDF bombs from exhausting memory.
+      const MAX_PAGES = 500;
+      if (numPages > MAX_PAGES) {
+        throw new Error(
+          `PDF has too many pages (${numPages}). Maximum is ${MAX_PAGES}.`,
+        );
+      }
       const pages: { pageNumber: number; text: string }[] = [];
 
       for (let i = 1; i <= numPages; i++) {

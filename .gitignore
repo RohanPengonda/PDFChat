@@ -7,6 +7,8 @@ coverage/
 .env*
 !.env.example
 database.sqlite
+database.sqlite-shm
+database.sqlite-wal
 uploads/*
 !uploads/.gitkeep
 interview.md

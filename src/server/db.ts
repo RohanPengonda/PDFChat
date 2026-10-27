@@ -57,6 +57,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.resolve(__dirname, '../../database.sqlite');
 const sqlite = new Database(dbPath);
 sqlite.pragma('foreign_keys = ON');
+sqlite.pragma('journal_mode = WAL');
 
 // Create tables
 sqlite.exec(`
@@ -321,5 +322,17 @@ export const db = {
     }
     sqlite.prepare('DELETE FROM chunks').run();
     sqlite.prepare('DELETE FROM documents').run();
-  }
+  },
+
+  // Close the SQLite handle. Call on process shutdown to avoid database
+  // corruption on abrupt termination.
+  close: (): void => {
+    sqlite.close();
+  },
+};
+
+// Close the SQLite handle. Call on process shutdown to avoid database
+// corruption on abrupt termination.
+export const close = (): void => {
+  sqlite.close();
 };

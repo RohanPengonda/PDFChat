@@ -1,5 +1,3 @@
-const AUTH_TOKEN_KEY = 'pdfchat.token';
-
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -7,29 +5,6 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
   }
-}
-
-function getAuthToken(): string | null {
-  try {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = { ...(extra || {}) };
-  const token = getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}
-
-// Exported for call sites that bypass `api` (e.g. the SSE stream and the PDF
-// viewer), so every request carries the Authorization header.
-export function getAuthHeaders(extra?: Record<string, string>): Record<string, string> {
-  return authHeaders(extra);
 }
 
 async function fail(res: Response, fallback: string): Promise<never> {
@@ -47,27 +22,36 @@ async function fail(res: Response, fallback: string): Promise<never> {
   throw new ApiError(message, res.status);
 }
 
-export const api = {
-  setToken(token: string | null) {
-    try {
-      if (token === null) {
-        localStorage.removeItem(AUTH_TOKEN_KEY);
-      } else {
-        localStorage.setItem(AUTH_TOKEN_KEY, token);
-      }
-    } catch {
-      // Ignore storage write failures (private mode, etc.)
-    }
-  },
+// All API calls send credentials so the HttpOnly session cookie is attached
+// automatically. No Authorization header is sent; the token lives only in the
+// cookie, inaccessible to JavaScript.
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { ...(extra || {}) };
+}
 
-  getToken(): string | null {
-    return getAuthToken();
+export function getAuthHeaders(extra?: Record<string, string>): Record<string, string> {
+  return apiHeaders(extra);
+}
+
+export const api = {
+  // Validate a token and set it as an HttpOnly cookie. Replaces localStorage
+  // storage so the token cannot be read by JavaScript (XSS protection).
+  async login(token: string): Promise<{ authenticated: boolean }> {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return fail(res, 'Login failed');
+    return res.json();
   },
 
   async getAuthStatus(): Promise<{ required: boolean; authenticated: boolean }> {
     const res = await fetch('/api/auth/status', {
       method: 'GET',
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to fetch auth status');
     return res.json();
@@ -78,8 +62,9 @@ export const api = {
     formData.append('file', file);
     const res = await fetch('/api/upload', {
       method: 'POST',
-      headers: authHeaders(),
+      headers: apiHeaders(),
       body: formData,
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Upload failed');
     return res.json();
@@ -87,7 +72,8 @@ export const api = {
 
   async getDocuments() {
     const res = await fetch('/api/documents', {
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to fetch documents');
     return res.json();
@@ -96,7 +82,8 @@ export const api = {
   async createChat() {
     const res = await fetch('/api/chats', {
       method: 'POST',
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to create chat');
     return res.json();
@@ -104,7 +91,8 @@ export const api = {
 
   async getChatHistory(chatId: string) {
     const res = await fetch(`/api/chats/${chatId}`, {
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to fetch chat history');
     return res.json();
@@ -113,7 +101,8 @@ export const api = {
   async deleteDocument(id: string) {
     const res = await fetch(`/api/documents/${id}`, {
       method: 'DELETE',
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to delete document');
     return res.json();
@@ -122,7 +111,8 @@ export const api = {
   async clearAllDocuments() {
     const res = await fetch('/api/documents', {
       method: 'DELETE',
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to clear documents');
     return res.json();
@@ -131,8 +121,9 @@ export const api = {
   async updateChatTitle(chatId: string, title: string) {
     const res = await fetch(`/api/chats/${chatId}/title`, {
       method: 'PATCH',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ title }),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to update chat title');
     return res.json();
@@ -141,7 +132,8 @@ export const api = {
   async deleteChat(chatId: string) {
     const res = await fetch(`/api/chats/${chatId}`, {
       method: 'DELETE',
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to delete chat');
     return res.json();
@@ -150,7 +142,8 @@ export const api = {
   async getDocumentSummary(documentId: string): Promise<string> {
     const res = await fetch(`/api/documents/${documentId}/summary`, {
       method: 'POST',
-      headers: authHeaders(),
+      headers: apiHeaders(),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to get summary');
     const data = await res.json();
@@ -162,8 +155,9 @@ export const api = {
   async getSuggestions(pdfId: string | undefined, lastQuestion: string): Promise<string[]> {
     const res = await fetch('/api/suggestions', {
       method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ pdf_id: pdfId, lastQuestion }),
+      credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to get suggestions');
     const data = await res.json();

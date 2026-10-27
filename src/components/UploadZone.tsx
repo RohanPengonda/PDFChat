@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import { Upload, Loader2, RotateCw } from "lucide-react";
-import { api } from "../lib/api";
 import { useToast } from "./Toast";
 import { clsx } from "clsx";
 
@@ -68,10 +67,7 @@ export function UploadZone({ onUploadComplete, isDark = false }: UploadZoneProps
       const formData = new FormData();
       formData.append('file', file);
 
-      const token = api.getToken();
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      }
+      xhr.withCredentials = true;
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {

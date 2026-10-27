@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 
-import { db } from './src/server/db';
+import { db, close } from './src/server/db';
 import { ingestionService } from './src/server/ingestion';
 import { chatService } from './src/server/chat';
 import { vectorStore } from './src/server/vector';
@@ -156,7 +156,12 @@ async function startServer() {
   };
   const extractToken = (req: express.Request): string => {
     const header = req.headers.authorization || '';
-    return (header.replace(/^Bearer\s+/i, '') || (req.headers['x-api-token'] as string) || '').trim();
+    const fromHeader = (header.replace(/^Bearer\s+/i, '') || (req.headers['x-api-token'] as string) || '').trim();
+    if (fromHeader) return fromHeader;
+    // Fall back to HttpOnly cookie so JavaScript cannot read the token.
+    const cookie = req.headers.cookie || '';
+    const match = cookie.match(/(?:^|;\s*)pdfchat_token=([^;]+)/);
+    return match ? match[1] : '';
   };
   // Compare against every configured token (constant-time) so a valid token is
   // found without leaking which one matched.
@@ -189,6 +194,25 @@ async function startServer() {
       return next();
     }
     res.status(401).json({ error: 'Unauthorized' });
+  });
+
+  // Login: validate a token and set it as an HttpOnly cookie so JavaScript
+  // cannot read it. The cookie is sent automatically on every same-origin
+  // request, replacing the need for Authorization headers and localStorage.
+  app.post('/api/login', async (req, res) => {
+    const { token } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ error: 'Token required' });
+    }
+    const userId = resolveUserId(token);
+    if (!userId) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    res.setHeader(
+      'Set-Cookie',
+      `pdfchat_token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 24 * 60 * 60}`,
+    );
+    res.json({ authenticated: true });
   });
   // API Routes
   
@@ -556,6 +580,16 @@ async function startServer() {
       console.error('Boot maintenance failed:', error);
     }
   });
+
+  // Graceful shutdown: close the SQLite handle on SIGTERM/SIGINT to avoid
+  // database corruption on abrupt termination.
+  const shutdown = () => {
+    console.log('Shutting down...');
+    close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 startServer();

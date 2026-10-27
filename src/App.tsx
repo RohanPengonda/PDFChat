@@ -82,7 +82,6 @@ export default function App() {
   // A request that gets 401 (expired/rotated token) drops us back to login.
   useEffect(() => {
     const onUnauthorized = () => {
-      api.setToken(null);
       try {
         localStorage.removeItem("pdfchat.chatId");
       } catch {

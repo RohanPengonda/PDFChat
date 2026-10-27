@@ -83,6 +83,7 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ message: content, chatId, mode, pdf_id, model }),
         signal: controller.signal,
+        credentials: 'include',
       });
 
       if (!response.ok) {

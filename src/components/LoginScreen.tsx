@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, Loader2, ArrowRight, RotateCw } from "lucide-react";
+import { Lock, Loader2, ArrowRight } from "lucide-react";
 import { clsx } from "clsx";
 import { api } from "../lib/api";
 
@@ -9,8 +9,8 @@ interface LoginScreenProps {
 }
 
 // Simple shared-secret login: the user pastes an access token configured on the
-// server (AUTH_TOKEN / AUTH_TOKENS). On success the token is stored so every
-// subsequent request carries it, and the app re-checks the session.
+// server (AUTH_TOKEN / AUTH_TOKENS). The token is sent to the server which sets
+// it as an HttpOnly cookie, so JavaScript cannot read it (XSS protection).
 export function LoginScreen({ onAuthenticated, isDark = false }: LoginScreenProps) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,28 +21,18 @@ export function LoginScreen({ onAuthenticated, isDark = false }: LoginScreenProp
     if (!token.trim() || busy) return;
     setBusy(true);
     setError(null);
-    // Store optimistically so the status call sends it, then verify.
-    api.setToken(token.trim());
     try {
-      const status = await api.getAuthStatus();
+      const status = await api.login(token.trim());
       if (status.authenticated) {
         onAuthenticated();
         return;
       }
-      api.setToken(null);
       setError("That access token isn't valid. Please try again.");
     } catch (err) {
-      api.setToken(null);
       setError(err instanceof Error && err.message ? err.message : "Login failed.");
     } finally {
       setBusy(false);
     }
-  };
-
-  const clearToken = () => {
-    api.setToken(null);
-    setToken("");
-    setError(null);
   };
 
   const bg = isDark ? "bg-[#161b27]" : "bg-[#ede8e0]";
@@ -114,17 +104,6 @@ export function LoginScreen({ onAuthenticated, isDark = false }: LoginScreenProp
           {error && (
             <p className="text-xs text-red-500 leading-snug">{error}</p>
           )}
-
-          <div className="flex items-center gap-2 text-[10px] leading-relaxed">
-            <RotateCw className="w-3 h-3 opacity-50" />
-            <button
-              onClick={clearToken}
-              className="underline text-[#8a7d6b] hover:text-[#b5651d] dark:text-[#6b7a99] dark:hover:text-[#5b9cf6] disabled:opacity-50"
-              disabled={busy}
-            >
-              Clear stored token
-            </button>
-          </div>
 
           <button
             type="submit"
