@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { api, ApiError, getAuthHeaders } from '../lib/api';
+import { api, ApiError, csrfHeaders } from '../lib/api';
 import { useToast } from '../components/Toast';
 
 export interface Source {
@@ -80,7 +80,7 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ message: content, chatId, mode, pdf_id, model }),
         signal: controller.signal,
         credentials: 'include',

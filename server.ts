@@ -196,9 +196,27 @@ async function startServer() {
     res.status(401).json({ error: 'Unauthorized' });
   });
 
+  // CSRF protection: state-changing methods require X-CSRF-Token header
+  // matching the pdfchat_csrf cookie. Prevents cross-site request forgery
+  // now that auth uses cookies (auto-sent by browser).
+  const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+  app.use('/api', (req, res, next) => {
+    if (!STATE_CHANGING_METHODS.has(req.method)) return next();
+    const cookie = req.headers.cookie || '';
+    const match = cookie.match(/(?:^|;\s*)pdfchat_csrf=([^;]+)/);
+    const cookieCsrf = match ? match[1] : '';
+    const headerCsrf = req.headers['x-csrf-token'] || '';
+    if (!cookieCsrf || !headerCsrf || cookieCsrf !== headerCsrf) {
+      return res.status(403).json({ error: 'CSRF token mismatch' });
+    }
+    next();
+  });
+
   // Login: validate a token and set it as an HttpOnly cookie so JavaScript
   // cannot read it. The cookie is sent automatically on every same-origin
   // request, replacing the need for Authorization headers and localStorage.
+  // Also sets a CSRF token cookie (not HttpOnly so the browser can read it)
+  // for double-submit CSRF protection on state-changing requests.
   app.post('/api/login', async (req, res) => {
     const { token } = req.body || {};
     if (!token) {
@@ -208,9 +226,16 @@ async function startServer() {
     if (!userId) {
       return res.status(401).json({ error: 'Invalid token' });
     }
+    const csrfToken = crypto.randomBytes(16).toString('hex');
+    const isSecure = process.env.NODE_ENV === 'production';
+    const cookieSuffix = `HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 24 * 60 * 60}${isSecure ? '; Secure' : ''}`;
     res.setHeader(
       'Set-Cookie',
-      `pdfchat_token=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 24 * 60 * 60}`,
+      `pdfchat_token=${token}; ${cookieSuffix}`,
+    );
+    res.setHeader(
+      'Set-Cookie',
+      `pdfchat_csrf=${csrfToken}; SameSite=Strict; Path=/; Max-Age=${7 * 24 * 60 * 60}${isSecure ? '; Secure' : ''}`,
     );
     res.json({ authenticated: true });
   });

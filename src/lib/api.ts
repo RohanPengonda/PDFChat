@@ -29,6 +29,23 @@ function apiHeaders(extra?: Record<string, string>): Record<string, string> {
   return { ...(extra || {}) };
 }
 
+// Read the CSRF cookie for double-submit CSRF protection on state-changing
+// requests. Not HttpOnly so JavaScript can read it.
+function getCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)pdfchat_csrf=([^;]+)/);
+  return match ? match[1] : null;
+}
+
+// Headers for state-changing requests (POST/PUT/PATCH/DELETE): include the
+// CSRF token read from the cookie so the server can validate it.
+export function csrfHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers = { ...(extra || {}) };
+  const token = getCsrfToken();
+  if (token) headers['X-CSRF-Token'] = token;
+  return headers;
+}
+
 export function getAuthHeaders(extra?: Record<string, string>): Record<string, string> {
   return apiHeaders(extra);
 }
@@ -62,7 +79,7 @@ export const api = {
     formData.append('file', file);
     const res = await fetch('/api/upload', {
       method: 'POST',
-      headers: apiHeaders(),
+      headers: csrfHeaders(),
       body: formData,
       credentials: 'include',
     });
@@ -82,7 +99,7 @@ export const api = {
   async createChat() {
     const res = await fetch('/api/chats', {
       method: 'POST',
-      headers: apiHeaders(),
+      headers: csrfHeaders(),
       credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to create chat');
@@ -101,7 +118,7 @@ export const api = {
   async deleteDocument(id: string) {
     const res = await fetch(`/api/documents/${id}`, {
       method: 'DELETE',
-      headers: apiHeaders(),
+      headers: csrfHeaders(),
       credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to delete document');
@@ -111,7 +128,7 @@ export const api = {
   async clearAllDocuments() {
     const res = await fetch('/api/documents', {
       method: 'DELETE',
-      headers: apiHeaders(),
+      headers: csrfHeaders(),
       credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to clear documents');
@@ -121,7 +138,7 @@ export const api = {
   async updateChatTitle(chatId: string, title: string) {
     const res = await fetch(`/api/chats/${chatId}/title`, {
       method: 'PATCH',
-      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ title }),
       credentials: 'include',
     });
@@ -132,7 +149,7 @@ export const api = {
   async deleteChat(chatId: string) {
     const res = await fetch(`/api/chats/${chatId}`, {
       method: 'DELETE',
-      headers: apiHeaders(),
+      headers: csrfHeaders(),
       credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to delete chat');
@@ -155,7 +172,7 @@ export const api = {
   async getSuggestions(pdfId: string | undefined, lastQuestion: string): Promise<string[]> {
     const res = await fetch('/api/suggestions', {
       method: 'POST',
-      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ pdf_id: pdfId, lastQuestion }),
       credentials: 'include',
     });

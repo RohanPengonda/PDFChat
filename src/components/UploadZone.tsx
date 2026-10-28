@@ -69,6 +69,12 @@ export function UploadZone({ onUploadComplete, isDark = false }: UploadZoneProps
 
       xhr.withCredentials = true;
 
+      // CSRF token for double-submit protection on state-changing requests.
+      const csrfMatch = document.cookie.match(/(?:^|;\s*)pdfchat_csrf=([^;]+)/);
+      if (csrfMatch) {
+        xhr.setRequestHeader('X-CSRF-Token', csrfMatch[1]);
+      }
+
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
           setUploadProgress(Math.round((e.loaded / e.total) * 100));
