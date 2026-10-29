@@ -197,11 +197,12 @@ async function startServer() {
   });
 
   // CSRF protection: state-changing methods require X-CSRF-Token header
-  // matching the pdfchat_csrf cookie. Prevents cross-site request forgery
-  // now that auth uses cookies (auto-sent by browser).
+  // matching the pdfchat_csrf cookie. Only enforced when authentication is
+  // enabled (cookies are only issued on login). Prevents cross-site request
+  // forgery now that auth uses cookies (auto-sent by browser).
   const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   app.use('/api', (req, res, next) => {
-    if (!STATE_CHANGING_METHODS.has(req.method)) return next();
+    if (!STATE_CHANGING_METHODS.has(req.method) || !authRequired) return next();
     const cookie = req.headers.cookie || '';
     const match = cookie.match(/(?:^|;\s*)pdfchat_csrf=([^;]+)/);
     const cookieCsrf = match ? match[1] : '';

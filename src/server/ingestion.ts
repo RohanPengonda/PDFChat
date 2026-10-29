@@ -6,6 +6,25 @@ import { vectorStore } from './vector';
 import { chunkPages, type TextChunk } from './chunking';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+// Some PDFs lose spaces between words during text extraction (e.g.
+// "HereareOOPsinterview" instead of "Here are OOPs interview"). This function
+// inserts spaces at common word boundaries so keyword matching and embedding
+// work correctly on the extracted text.
+function normalizeText(text: string): string {
+  if (!text) return text;
+  return text
+    // Lowercase followed by uppercase: "hereAre" → "here Are"
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    // Uppercase followed by uppercase+lowercase: "OOPSInterview" → "OOPS Interview"
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    // Letter followed by digit or vice versa: "version2" → "version 2", "2nd" → "2 nd"
+    .replace(/([a-zA-Z])(\d)/g, '$1 $2')
+    .replace(/(\d)([a-zA-Z])/g, '$1 $2')
+    // Collapse multiple spaces into one
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export const ingestionService = {
   async processDocument(file: Express.Multer.File, userId?: string): Promise<string> {
     const documentId = uuidv4();
@@ -114,7 +133,11 @@ export const ingestionService = {
       for (let i = 1; i <= numPages; i++) {
         const page = await pdfDocument.getPage(i);
         const textContent = await page.getTextContent();
-        const text = textContent.items.map((item: any) => item.str).join(' ');
+        let text = textContent.items.map((item: any) => item.str).join(' ');
+        // Some PDFs lose spaces between words (e.g. "HereareOOPsinterview").
+        // Insert spaces at word boundaries so keyword matching and embedding
+        // work correctly on the extracted text.
+        text = normalizeText(text);
         pages.push({ pageNumber: i, text });
         page.cleanup();
       }
