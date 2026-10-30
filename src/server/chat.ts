@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { db, type Source } from './db';
 import { vectorStore } from './vector';
 import { generateEmbedding } from './embedding';
-import { sampleEvenly } from './util';
+import { sampleEvenly, getRetryDelayMs } from './util';
 import { Response } from 'express';
 import prompts from './prompts.json';
 
@@ -138,12 +138,9 @@ ${numberedContext}
         const err = error as { status?: number; message?: string; cause?: { message?: string } };
         if (isRetryable(error) && retries > 1) {
           retries--;
-          // Honor Retry-After header if present, otherwise exponential backoff.
-          const retryAfter = err?.cause?.message || '';
-          const headerMatch = retryAfter.match(/retry-after:\s*(\d+)/i);
-          const delayMs = headerMatch
-            ? parseInt(headerMatch[1], 10) * 1000
-            : (6 - retries) * 5000;
+          // Honor the Retry-After header when present, otherwise fall back to
+          // the fixed exponential backoff.
+          const delayMs = getRetryDelayMs(error, (6 - retries) * 5000);
           console.log(`Model ${selectedModel} unavailable (${err?.status || err?.message}), retrying in ${delayMs / 1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
         } else {

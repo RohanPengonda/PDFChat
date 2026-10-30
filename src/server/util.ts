@@ -14,6 +14,36 @@ export function safeErrorMessage(message: unknown): string {
     : 'Failed to process document.';
 }
 
+interface ErrorLike {
+  response?: { headers?: HeaderLike } | undefined;
+  cause?: unknown;
+}
+interface HeaderLike {
+  get?: (name: string) => string | null;
+  [key: string]: unknown;
+}
+
+function extractRetryAfterHeader(error: unknown): string | undefined {
+  const err = error as ErrorLike | undefined;
+  const source: ErrorLike = (err?.cause as ErrorLike | undefined) ?? (err as ErrorLike);
+  const headers = source?.response?.headers;
+  if (!headers) return undefined;
+  if (typeof headers.get === 'function') {
+    return headers.get('retry-after') ?? undefined;
+  }
+  const value = (headers as Record<string, unknown>)['retry-after'];
+  return typeof value === 'string' ? value : undefined;
+}
+
+// Honor the Retry-After header (seconds) when present; otherwise use the
+// caller-supplied backoff delay.
+export function getRetryDelayMs(error: unknown, fallbackMs: number): number {
+  const raw = extractRetryAfterHeader(error);
+  const seconds = raw ? parseInt(raw, 10) : NaN;
+  if (!Number.isNaN(seconds) && seconds > 0) return seconds * 1000;
+  return fallbackMs;
+}
+
 // Evenly sample up to `max` items across the list so long documents are
 // represented end-to-end instead of only from their opening pages.
 export function sampleEvenly<T>(items: T[], max: number): T[] {

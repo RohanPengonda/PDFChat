@@ -64,6 +64,10 @@ function rateLimit(options: { windowMs: number; max: number }) {
 // Expensive (Gemini-backed) endpoints get a shared budget per client.
 const aiRateLimit = rateLimit({ windowMs: 60_000, max: 30 });
 
+// Token submission (login) is also a target for brute-force attempts, so it
+// gets a stricter per-IP budget than the AI endpoints.
+const authRateLimit = rateLimit({ windowMs: 60_000, max: 10 });
+
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -77,6 +81,10 @@ async function startServer() {
   }
 
   const app = express();
+  // Trust the reverse-proxy hop (X-Forwarded-For) when deployed behind one so
+  // the rate limiter keys on the real client IP instead of the proxy's address.
+  const trustProxyRaw = process.env.TRUST_PROXY;
+  app.set('trust proxy', trustProxyRaw ? (trustProxyRaw === 'true' ? true : trustProxyRaw) : false);
   const PORT = Number(process.env.PORT) || 3000;
   // Bind to loopback by default so the API is not exposed on the LAN. Set
   // HOST=0.0.0.0 explicitly when running in a container or testing from a phone.
@@ -218,7 +226,7 @@ async function startServer() {
   // request, replacing the need for Authorization headers and localStorage.
   // Also sets a CSRF token cookie (not HttpOnly so the browser can read it)
   // for double-submit CSRF protection on state-changing requests.
-  app.post('/api/login', async (req, res) => {
+  app.post('/api/login', authRateLimit, async (req, res) => {
     const { token } = req.body || {};
     if (!token) {
       return res.status(400).json({ error: 'Token required' });
