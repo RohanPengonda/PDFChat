@@ -192,8 +192,7 @@ export function PDFViewer({
   // with === and would otherwise refetch the document every render). Recompute
   // when the auth token changes (e.g. rotation or logout/login) so requests
   // never go out with a stale token.
-  const headersKey = JSON.stringify(getAuthHeaders());
-  const pdfOptions = useMemo(() => ({ httpHeaders: getAuthHeaders() }), [headersKey]);
+  const pdfOptions = useMemo(() => ({ httpHeaders: getAuthHeaders() }), []);
 
   const bg = isDark ? "bg-[#161b27]" : "bg-[#f0ece6]";
   const cardBg = isDark ? "bg-[#1e2433]" : "bg-white";
