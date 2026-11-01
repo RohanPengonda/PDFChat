@@ -72,7 +72,8 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
     abortRef.current = controller;
 
     // Add user message immediately
-    const userMsg: Message = { id: uuidv4(), role: 'user', content };
+    const userMsgId = uuidv4();
+    const userMsg: Message = { id: userMsgId, role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamingContent('');
@@ -133,7 +134,21 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
       }
 
       // Superseded by a newer request: discard this result entirely.
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        // Mirror the server, which rolls the turn back when the client goes away.
+        setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+        return;
+      }
+
+      // The stream failed or returned an error frame — no complete answer was
+      // produced, so drop the optimistic user question instead of leaving it
+      // dangling without a response.
+      if (streamError) {
+        setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+        setStreamingContent('');
+        toast(streamError, 'error');
+        return;
+      }
 
       // Never render an empty assistant bubble; surface the failure instead.
       if (currentText) {
@@ -144,10 +159,6 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
           sources: currentSources,
         };
         setMessages(prev => [...prev, assistantMsg]);
-      }
-
-      if (streamError) {
-        toast(streamError, 'error');
       }
 
       setStreamingContent('');
@@ -161,8 +172,15 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
           .catch(() => toast('Failed to load suggested questions.', 'error'));
       }
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        // Mirror the server, which rolls the turn back when the client goes away.
+        setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+        return;
+      }
       console.error('Send message error:', error);
+      // Drop the optimistic user question so we don't leave an unanswered
+      // bubble in the chat.
+      setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
       toast('Failed to get a response. Please try again.', 'error');
     } finally {
       if (abortRef.current === controller) {
