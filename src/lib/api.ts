@@ -156,11 +156,12 @@ export const api = {
     return res.json();
   },
 
-  async getDocumentSummary(documentId: string): Promise<string> {
+  async getDocumentSummary(documentId: string, model?: string): Promise<string> {
     const res = await fetch(`/api/documents/${documentId}/summary`, {
       method: 'POST',
-      headers: apiHeaders(),
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       credentials: 'include',
+      body: JSON.stringify({ model }),
     });
     if (!res.ok) return fail(res, 'Failed to get summary');
     const data = await res.json();
@@ -169,11 +170,11 @@ export const api = {
 
   // `pdfId` scopes suggestions to one document; omit it to draw from every
   // document so "All documents" mode also gets follow-ups.
-  async getSuggestions(pdfId: string | undefined, lastQuestion: string): Promise<string[]> {
+  async getSuggestions(pdfId: string | undefined, lastQuestion: string, model?: string): Promise<string[]> {
     const res = await fetch('/api/suggestions', {
       method: 'POST',
       headers: csrfHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ pdf_id: pdfId, lastQuestion }),
+      body: JSON.stringify({ pdf_id: pdfId, lastQuestion, model }),
       credentials: 'include',
     });
     if (!res.ok) return fail(res, 'Failed to get suggestions');

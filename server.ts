@@ -492,6 +492,7 @@ async function startServer() {
   // 10. Generate document summary
   app.post('/api/documents/:id/summary', aiRateLimit, async (req, res) => {
     try {
+      const { model } = req.body || {};
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
       if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
@@ -499,7 +500,7 @@ async function startServer() {
       const cachedSummary = doc.summary;
       const isFailurePlaceholder = !cachedSummary || cachedSummary === 'Could not generate summary.';
       if (!isFailurePlaceholder) return res.json({ summary: cachedSummary });
-      const summary = await chatService.generateSummary(req.params.id);
+      const summary = await chatService.generateSummary(req.params.id, model);
       db.setDocumentSummary(req.params.id, summary);
       res.json({ summary });
     } catch (error) {
@@ -513,11 +514,11 @@ async function startServer() {
   // variant is kept for backward compatibility.
   app.post('/api/documents/:id/suggestions', aiRateLimit, async (req, res) => {
     try {
-      const { lastQuestion } = req.body;
+      const { lastQuestion, model } = req.body;
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
       if (!doc) return res.status(404).json({ error: 'Document not found or access denied' });
-      const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '', userId);
+      const suggestions = await chatService.generateSuggestions(req.params.id, lastQuestion || '', userId, model);
       res.json({ suggestions });
     } catch (error) {
       console.error('Suggestions error:', error);
@@ -529,12 +530,12 @@ async function startServer() {
   // every document the caller owns when pdf_id is omitted.
   app.post('/api/suggestions', aiRateLimit, async (req, res) => {
     try {
-      const { pdf_id, lastQuestion } = req.body;
+      const { pdf_id, lastQuestion, model } = req.body;
       const userId = req.userId;
       if (pdf_id && !db.getDocument(pdf_id, userId)) {
         return res.status(404).json({ error: 'Document not found or access denied' });
       }
-      const suggestions = await chatService.generateSuggestions(pdf_id || undefined, lastQuestion || '', userId);
+      const suggestions = await chatService.generateSuggestions(pdf_id || undefined, lastQuestion || '', userId, model);
       res.json({ suggestions });
     } catch (error) {
       console.error('Suggestions error:', error);

@@ -240,6 +240,17 @@ export const db = {
     return sqlite.prepare('SELECT * FROM chats WHERE id = ?').get(id) as { id: string; title: string | null } | undefined;
   },
 
+  // Total message count for a chat, used to compute the offset for a
+  // most-recent window when reading history through the paginated read path.
+  getChatMessageCount: (chatId: string, userId?: string): number => {
+    if (userId) {
+      const chat = sqlite.prepare('SELECT id FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(chatId, userId);
+      if (!chat) return 0;
+    }
+    const row = sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE chat_id = ?').get(chatId) as { count: number };
+    return row.count;
+  },
+
   // Update chat title
   updateChatTitle: (id: string, title: string, userId?: string): void => {
     if (userId) {

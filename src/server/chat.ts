@@ -71,7 +71,10 @@ export const chatService = {
 
     // 2. Build bounded conversation history so follow-up questions keep context.
     // Consecutive same-role turns are merged to satisfy the model's alternation rules.
-    const history = db.getMessages(chatId, userId) as { role: 'user' | 'assistant'; content: string }[];
+    // Uses the paginated read path to fetch only the most recent window.
+    const HISTORY_LIMIT = 20;
+    const historyOffset = Math.max(0, db.getChatMessageCount(chatId, userId) - HISTORY_LIMIT);
+    const history = db.getMessages(chatId, userId, HISTORY_LIMIT, historyOffset) as { role: 'user' | 'assistant'; content: string }[];
     const contents: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
     for (const m of history.slice(-20)) {
       const role = m.role === 'assistant' ? 'model' : 'user';
@@ -266,7 +269,7 @@ ${numberedContext}
 
   // When `documentId` is omitted the suggestions are drawn from every document
   // the caller owns, so "All documents" mode also gets follow-ups.
-  async generateSuggestions(documentId: string | undefined, lastQuestion: string, userId?: string): Promise<string[]> {
+  async generateSuggestions(documentId: string | undefined, lastQuestion: string, userId?: string, model?: string): Promise<string[]> {
     const cacheKey = `${documentId ?? 'all'}:${lastQuestion}`;
     const cached = getCachedSuggestions(cacheKey);
     if (cached) return cached;
@@ -287,8 +290,9 @@ ${numberedContext}
     let retries = 2;
     while (retries >= 0) {
       try {
+        const selectedModel = model && ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
         const result = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: selectedModel,
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
         const raw = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
@@ -326,7 +330,7 @@ ${numberedContext}
     return [];
   },
 
-  async generateSummary(documentId: string): Promise<string> {
+  async generateSummary(documentId: string, model?: string): Promise<string> {
     const allChunks = db.getAllChunks(documentId);
     if (allChunks.length === 0) return 'No content found in this document.';
 
@@ -361,8 +365,9 @@ ${sampleText}`;
     let retries = 3;
     while (retries > 0) {
       try {
+        const selectedModel = model && ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
         const result = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: selectedModel,
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
         const text = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text;

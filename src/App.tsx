@@ -147,7 +147,7 @@ export default function App() {
     setSidebarOpen(false);
     setMobileTab("pdf");
     try {
-      const content = await api.getDocumentSummary(doc.id);
+      const content = await api.getDocumentSummary(doc.id, selectedModel);
       setSummary({ docName: doc.original_name || doc.filename, content });
     } catch (e) {
       console.error("Summary failed:", e);
@@ -160,7 +160,7 @@ export default function App() {
     setSummaryLoadingId(doc.id);
     setSidebarOpen(false);
     try {
-      const content = await api.getDocumentSummary(doc.id);
+      const content = await api.getDocumentSummary(doc.id, selectedModel);
       setSummary({ docName: doc.original_name, content });
     } catch {
       setSummary({
@@ -471,7 +471,7 @@ export default function App() {
           if (doc) {
             setSummaryLoadingId(selectedDocId);
             api
-              .getDocumentSummary(selectedDocId)
+              .getDocumentSummary(selectedDocId, selectedModel)
               .then((content) => {
                 setSummary({ docName: doc.original_name, content });
               })

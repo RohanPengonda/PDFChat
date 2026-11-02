@@ -110,17 +110,13 @@ class LocalVectorStore implements VectorStore {
 
   async query(vector: number[], topK: number, filter?: VectorFilter): Promise<VectorResult[]> {
     // Scope in SQL so unrelated documents are never loaded.
-    let chunks: ChunkRow[];
-    if (filter && Array.isArray(filter.pdf_ids)) {
-      chunks = db.getChunksByDocumentIds(filter.pdf_ids);
-    } else {
-      chunks = db.getAllChunks();
-    }
+    const allChunks: ChunkRow[] = filter && Array.isArray(filter.pdf_ids)
+      ? db.getChunksByDocumentIds(filter.pdf_ids)
+      : db.getAllChunks();
 
-    if (chunks.length === 0) return [];
+    if (allChunks.length === 0) return [];
 
     const query = filter?.query || '';
-    const expandedQueries = filter?.expandedQueries || [];
 
     // Build SQL-side keyword pre-filter so we don't load every chunk into
     // memory. Split the query into words and match chunks containing any of
@@ -142,7 +138,25 @@ class LocalVectorStore implements VectorStore {
         // Fall through to all chunks if LIKE query fails.
       }
     }
-    chunks = sqlFilteredChunks ?? chunks;
+    const chunks = sqlFilteredChunks ?? allChunks;
+
+    const results = await this.scoreChunks(vector, topK, filter, chunks);
+    if (results.length > 0) return results;
+
+    // The keyword pre-filter pool produced no qualifying chunk; retry against
+    // the full scoped set so semantically-relevant chunks that lack literal
+    // query words are still considered.
+    if (sqlFilteredChunks) {
+      return this.scoreChunks(vector, topK, filter, allChunks);
+    }
+    return results;
+  }
+
+  // Score a candidate chunk pool with hybrid cosine + keyword scoring, MMR
+  // diversification, and the relevance gate.
+  private async scoreChunks(vector: number[], topK: number, filter: VectorFilter | undefined, chunks: ChunkRow[]): Promise<VectorResult[]> {
+    const query = filter?.query || '';
+    const expandedQueries = filter?.expandedQueries || [];
 
     // Build per-query vectors: the original query plus any expansions.
     const queryVectors = [vector];
@@ -202,10 +216,12 @@ class LocalVectorStore implements VectorStore {
     // Diversify with MMR so top-K isn't all from the same paragraph.
     const diversified = this.mmr(scored, topK * 2, 0.7);
 
-    return diversified
+    const results = diversified
       .sort((a, b) => b.score - a.score)
       .filter((r) => r.score > 0.1)
       .slice(0, topK);
+
+    return results;
   }
 
   // Embed a short query string on demand for expansion vectors. Reuses the same

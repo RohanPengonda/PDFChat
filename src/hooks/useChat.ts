@@ -167,7 +167,7 @@ export function useChat(chatId: string | null, onChatInvalid?: () => void) {
       // mode no pdf_id is sent so suggestions span the whole library.
       if (currentText) {
         const scope = mode === 'single' ? pdf_id : undefined;
-        api.getSuggestions(scope, content)
+        api.getSuggestions(scope, content, model)
           .then(result => { if (result.length > 0) setSuggestions(result); })
           .catch(() => toast('Failed to load suggested questions.', 'error'));
       }
