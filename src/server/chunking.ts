@@ -16,8 +16,11 @@ export interface TextChunk {
 export const CHUNK_SIZE = 1000;
 export const CHUNK_OVERLAP = 100;
 
-// Matches sentence-ending punctuation followed by whitespace.
-const SENTENCE_BOUNDARY = /[.!?]\s+/;
+// Matches sentence-ending punctuation followed by whitespace. The `g` flag is
+// required: without it, exec() always restarts from the beginning of the string
+// and returns the same first match forever, turning the split loop below into
+// an infinite loop that blocks the server.
+const SENTENCE_BOUNDARY = /([.!?])\s+/g;
 
 // Try to split at a sentence boundary near the end of the window so chunks
 // don't break mid-sentence. Searches back up to 200 chars from `end`.

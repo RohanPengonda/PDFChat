@@ -280,7 +280,18 @@ async function startServer() {
           return res.status(400).json({ error: 'Upload limit reached. Delete some documents first.' });
         }
       }
-      const documentId = await ingestionService.processDocument(req.file, userId);
+      // Hard cap on ingestion so a hung extraction/embedding cannot hold the
+      // upload open (and the client's "Processing…" state) indefinitely.
+      const INGESTION_TIMEOUT_MS = 300_000;
+      const documentId = await Promise.race([
+        ingestionService.processDocument(req.file, userId),
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(
+            () => reject(new Error('Upload processing timed out after 300 seconds.')),
+            INGESTION_TIMEOUT_MS,
+          );
+        }),
+      ]);
       // Match the shape returned by GET /api/documents so the client can render
       // the document immediately without waiting for a refetch.
       res.json({ id: documentId, filename: req.file.filename, original_name: req.file.originalname });
@@ -603,7 +614,19 @@ async function startServer() {
         }
       }
 
-      const knownFiles = new Set(db.getDocuments().map((d) => d.filename));
+      const docs = db.getDocuments();
+      const knownFiles = new Set<string>(docs.map((d) => d.filename));
+      // Remove orphaned documents left behind by an interrupted ingestion
+      // (metadata row committed before extraction finished, but no chunks ever
+      // landed) so they do not resurface in the library after a restart.
+      for (const doc of docs) {
+        const hasChunks = db.getAllChunks(doc.id).length > 0;
+        if (hasChunks) continue;
+        if (doc.filename) {
+          try { fs.unlinkSync(path.join(uploadDir, path.basename(doc.filename))); } catch {}
+        }
+        try { db.deleteDocument(doc.id); } catch {}
+      }
       for (const entry of fs.readdirSync(uploadDir)) {
         // Never touch dotfiles (e.g. .gitkeep).
         if (entry.startsWith('.')) continue;

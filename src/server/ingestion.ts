@@ -31,9 +31,6 @@ export const ingestionService = {
     const filePath = file.path;
 
     try {
-      // 1. Store metadata in DB
-      db.createDocument(documentId, file.filename, file.originalname, userId);
-
       // 2. Extract Text
       const pages = await this.extractTextFromPDF(filePath);
 
@@ -43,7 +40,11 @@ export const ingestionService = {
         throw new Error('No extractable text found in this PDF (it may be a scanned image).');
       }
 
-      // 4. Generate Embeddings & Store (atomic per chunk insert; rollback on full failure)
+      // 4. Store metadata in DB (after extraction/chunking succeeded so failed
+      // ingestions do not leave orphaned document rows behind).
+      db.createDocument(documentId, file.filename, file.originalname, userId);
+
+      // 5. Generate Embeddings & Store (atomic per chunk insert; rollback on full failure)
       const BATCH_SIZE = 5;
       for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
         const batch = chunks.slice(i, i + BATCH_SIZE);

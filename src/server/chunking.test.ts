@@ -28,6 +28,19 @@ describe('chunkPages', () => {
     expect(chunks[1].pageNumber).toBe(3);
   });
 
+  it('splits long pages containing sentence boundaries without hanging', () => {
+    // Real prose contains sentence-ending punctuation; the split search must
+    // walk past the first boundary instead of looping forever on it.
+    const text = [
+      'The quick brown fox jumps over the lazy dog. '.repeat(30),
+      'Here are some more words that keep on going without stopping at all.',
+    ].join('');
+    expect(text.length).toBeGreaterThan(CHUNK_SIZE);
+    const chunks = chunkPages([{ pageNumber: 2, text }]);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0].charEndPos).toBeLessThanOrEqual(text.length);
+  });
+
   it('assigns globally increasing chunk indices across pages', () => {
     const chunks = chunkPages([
       { pageNumber: 1, text: 'first page' },
