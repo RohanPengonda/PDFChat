@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { EMBEDDING_VERSION } from './embedding';
+import { encryptText, decryptTextLoose } from './encryption';
 
 export interface Source {
   file_name: string;
@@ -128,30 +129,38 @@ export const db = {
   // Documents
   createDocument: (id: string, filename: string, originalName: string, userId?: string): string => {
     const stmt = sqlite.prepare('INSERT INTO documents (id, filename, original_name, user_id) VALUES (?, ?, ?, ?)');
-    stmt.run(id, filename, originalName, userId || null);
+    // original_name is user-supplied and can embed personal filenames; store encrypted.
+    stmt.run(id, filename, encryptText(originalName), userId || null);
     return id;
   },
 
   getDocuments: (userId?: string, limit?: number, offset?: number): DocumentRow[] => {
-    if (userId) {
-      const base = 'SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC';
-      if (limit !== undefined) {
-        return sqlite.prepare(`${base} LIMIT ? OFFSET ?`).all(userId, limit, offset ?? 0) as DocumentRow[];
-      }
-      return sqlite.prepare(base).all(userId) as DocumentRow[];
-    }
-    const base = 'SELECT * FROM documents ORDER BY created_at DESC';
-    if (limit !== undefined) {
-      return sqlite.prepare(`${base} LIMIT ? OFFSET ?`).all(limit, offset ?? 0) as DocumentRow[];
-    }
-    return sqlite.prepare(base).all() as DocumentRow[];
+    const rows = (
+      userId
+        ? (
+            limit !== undefined
+              ? sqlite.prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(userId, limit, offset ?? 0) as DocumentRow[]
+              : sqlite.prepare('SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC').all(userId) as DocumentRow[]
+          )
+        : (
+            limit !== undefined
+              ? sqlite.prepare('SELECT * FROM documents ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset ?? 0) as DocumentRow[]
+              : sqlite.prepare('SELECT * FROM documents ORDER BY created_at DESC').all() as DocumentRow[]
+          )
+    );
+    return rows.map((r) => ({
+      ...r,
+      original_name: decryptTextLoose(r.original_name) ?? r.original_name,
+      summary: decryptTextLoose(r.summary),
+    }));
   },
 
   getDocument: (id: string, userId?: string): DocumentRow | undefined => {
-    if (userId) {
-      return sqlite.prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?').get(id, userId) as DocumentRow | undefined;
-    }
-    return sqlite.prepare('SELECT * FROM documents WHERE id = ?').get(id) as DocumentRow | undefined;
+    const row = userId
+      ? (sqlite.prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?').get(id, userId) as DocumentRow | undefined)
+      : (sqlite.prepare('SELECT * FROM documents WHERE id = ?').get(id) as DocumentRow | undefined);
+    if (!row) return undefined;
+    return { ...row, original_name: decryptTextLoose(row.original_name) ?? row.original_name, summary: decryptTextLoose(row.summary) };
   },
 
   // Assign documents uploaded before authentication was enabled to a single
@@ -162,19 +171,27 @@ export const db = {
   },
 
   setDocumentSummary: (id: string, summary: string): void => {
-    sqlite.prepare('UPDATE documents SET summary = ? WHERE id = ?').run(summary, id);
+    sqlite.prepare('UPDATE documents SET summary = ? WHERE id = ?').run(encryptText(summary), id);
   },
 
   // Chunks
   createChunk: (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[], charStartPos?: number, charEndPos?: number): void => {
     const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding, embedding_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    stmt.run(id, documentId, content, pageNumber, chunkIndex, charStartPos ?? 0, charEndPos ?? content.length, JSON.stringify(embedding), EMBEDDING_VERSION);
+    stmt.run(id, documentId, encryptText(content), pageNumber, chunkIndex, charStartPos ?? 0, charEndPos ?? content.length, encryptText(JSON.stringify(embedding)), EMBEDDING_VERSION);
   },
 
   getAllChunks: (documentId?: string): ChunkRow[] => {
-    return (documentId
-      ? sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id = ?').all(documentId)
-      : sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id').all()) as ChunkRow[];
+    const rows = (
+      documentId
+        ? sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id = ?').all(documentId)
+        : sqlite.prepare('SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id').all()
+    ) as ChunkRow[];
+    return rows.map((c) => ({
+      ...c,
+      content: decryptTextLoose(c.content) ?? c.content,
+      embedding: decryptTextLoose(c.embedding),
+      file_name: decryptTextLoose(c.file_name) ?? c.file_name,
+    }));
   },
 
   // Fetch only chunks belonging to the given documents (SQL-side scoping) so a
@@ -182,62 +199,45 @@ export const db = {
   getChunksByDocumentIds: (documentIds: string[]): ChunkRow[] => {
     if (documentIds.length === 0) return [];
     const placeholders = documentIds.map(() => '?').join(',');
-    return sqlite
+    const rows = sqlite
       .prepare(`SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id IN (${placeholders})`)
       .all(...documentIds) as ChunkRow[];
-  },
-
-  // Like getChunksByDocumentIds but with an additional SQL-side LIKE filter so
-  // only chunks containing at least one query word are loaded into memory.
-  getChunksByDocumentIdsLike: (
-    documentIds: string[],
-    conditions: string,
-    params: string[],
-  ): ChunkRow[] => {
-    if (documentIds.length === 0) return [];
-    const placeholders = documentIds.map(() => '?').join(',');
-    return sqlite
-      .prepare(
-        `SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE c.document_id IN (${placeholders}) AND (${conditions})`,
-      )
-      .all(...documentIds, ...params) as ChunkRow[];
-  },
-
-  // Like getAllChunks but with an additional SQL-side LIKE filter.
-  getAllChunksLike: (conditions: string, params: string[]): ChunkRow[] => {
-    return sqlite
-      .prepare(
-        `SELECT c.*, d.original_name as file_name FROM chunks c JOIN documents d ON c.document_id = d.id WHERE (${conditions})`,
-      )
-      .all(...params) as ChunkRow[];
+    return rows.map((c) => ({
+      ...c,
+      content: decryptTextLoose(c.content) ?? c.content,
+      embedding: decryptTextLoose(c.embedding),
+      file_name: decryptTextLoose(c.file_name) ?? c.file_name,
+    }));
   },
 
   // Chunks whose stored embedding predates the current algorithm version.
   getChunksNeedingReindex: (): { id: string; content: string }[] => {
-    return sqlite
+    const rows = sqlite
       .prepare('SELECT id, content FROM chunks WHERE embedding_version IS NULL OR embedding_version != ?')
       .all(EMBEDDING_VERSION) as { id: string; content: string }[];
+    return rows.map((r) => ({ id: r.id, content: decryptTextLoose(r.content) ?? r.content }));
   },
 
   setChunkEmbedding: (id: string, embedding: number[]): void => {
     sqlite
       .prepare('UPDATE chunks SET embedding = ?, embedding_version = ? WHERE id = ?')
-      .run(JSON.stringify(embedding), EMBEDDING_VERSION, id);
+      .run(encryptText(JSON.stringify(embedding)), EMBEDDING_VERSION, id);
   },
 
   // Chats
   createChat: (userId?: string): string => {
     const id = uuidv4();
     const stmt = sqlite.prepare('INSERT INTO chats (id, title, user_id) VALUES (?, ?, ?)');
-    stmt.run(id, 'New Chat', userId || null);
+    stmt.run(id, encryptText('New Chat'), userId || null);
     return id;
   },
 
   getChat: (id: string, userId?: string): { id: string; title: string | null } | undefined => {
-    if (userId) {
-      return sqlite.prepare('SELECT * FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId) as { id: string; title: string | null } | undefined;
-    }
-    return sqlite.prepare('SELECT * FROM chats WHERE id = ?').get(id) as { id: string; title: string | null } | undefined;
+    const row = userId
+      ? (sqlite.prepare('SELECT * FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId) as { id: string; title: string | null } | undefined)
+      : (sqlite.prepare('SELECT * FROM chats WHERE id = ?').get(id) as { id: string; title: string | null } | undefined);
+    if (!row) return undefined;
+    return { id: row.id, title: decryptTextLoose(row.title) };
   },
 
   // Total message count for a chat, used to compute the offset for a
@@ -254,10 +254,10 @@ export const db = {
   // Update chat title
   updateChatTitle: (id: string, title: string, userId?: string): void => {
     if (userId) {
-      sqlite.prepare('UPDATE chats SET title = ? WHERE id = ? AND (user_id = ? OR user_id IS NULL)').run(title, id, userId);
+      sqlite.prepare('UPDATE chats SET title = ? WHERE id = ? AND (user_id = ? OR user_id IS NULL)').run(encryptText(title), id, userId);
       return;
     }
-    sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(title, id);
+    sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(encryptText(title), id);
   },
 
   // Delete chat and its messages
@@ -275,7 +275,7 @@ export const db = {
   addMessage: (chatId: string, role: 'user' | 'assistant', content: string, sources?: Source[]): string => {
     const id = uuidv4();
     const stmt = sqlite.prepare('INSERT INTO messages (id, chat_id, role, content, sources) VALUES (?, ?, ?, ?, ?)');
-    stmt.run(id, chatId, role, content, sources && sources.length ? JSON.stringify(sources) : null);
+    stmt.run(id, chatId, role, encryptText(content), sources && sources.length ? encryptText(JSON.stringify(sources)) : null);
     return id;
   },
 
@@ -304,7 +304,8 @@ export const db = {
     }
     return rows.map((r) => ({
       ...r,
-      sources: r.sources ? (JSON.parse(r.sources) as Source[]) : undefined,
+      content: decryptTextLoose(r.content) ?? r.content,
+      sources: r.sources ? (JSON.parse(decryptTextLoose(r.sources) ?? 'null') as Source[]) : undefined,
     }));
   },
 
@@ -341,6 +342,56 @@ export const db = {
     sqlite.close();
   },
 };
+
+// One-time migration: encrypt any legacy plaintext rows now that encryption
+// is enabled. Rows already encrypted are left untouched (decrypt succeeds).
+const migrateLegacyPlaintextRows = (): void => {
+  try {
+    const docs = sqlite.prepare('SELECT id, summary FROM documents').all() as { id: string; summary: string | null }[];
+    for (const d of docs) {
+      const plain = decryptTextLoose(d.summary);
+      if (d.summary && plain === d.summary) {
+        sqlite.prepare('UPDATE documents SET summary = ? WHERE id = ?').run(encryptText(d.summary), d.id);
+      }
+    }
+
+    const chunks = sqlite.prepare('SELECT id, content, embedding FROM chunks').all() as { id: string; content: string; embedding: string | null }[];
+    for (const c of chunks) {
+      const contentPlain = decryptTextLoose(c.content);
+      if (contentPlain === c.content) {
+        sqlite.prepare('UPDATE chunks SET content = ? WHERE id = ?').run(encryptText(c.content), c.id);
+      }
+      const embeddingPlain = decryptTextLoose(c.embedding);
+      if (c.embedding && embeddingPlain === c.embedding) {
+        sqlite.prepare('UPDATE chunks SET embedding = ? WHERE id = ?').run(encryptText(c.embedding), c.id);
+      }
+    }
+
+    const chats = sqlite.prepare('SELECT id, title FROM chats').all() as { id: string; title: string | null }[];
+    for (const ch of chats) {
+      const plain = decryptTextLoose(ch.title);
+      if (ch.title && plain === ch.title) {
+        sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(encryptText(ch.title), ch.id);
+      }
+    }
+
+    const messages = sqlite.prepare('SELECT id, content, sources FROM messages').all() as { id: string; content: string; sources: string | null }[];
+    for (const m of messages) {
+      const contentPlain = decryptTextLoose(m.content);
+      if (contentPlain === m.content) {
+        sqlite.prepare('UPDATE messages SET content = ? WHERE id = ?').run(encryptText(m.content), m.id);
+      }
+      const sourcesPlain = decryptTextLoose(m.sources);
+      if (m.sources && sourcesPlain === m.sources) {
+        sqlite.prepare('UPDATE messages SET sources = ? WHERE id = ?').run(encryptText(m.sources), m.id);
+      }
+    }
+  } catch (err) {
+    console.error('SQLite encryption migration failed:', err);
+  }
+};
+
+migrateLegacyPlaintextRows();
 
 // Close the SQLite handle. Call on process shutdown to avoid database
 // corruption on abrupt termination.

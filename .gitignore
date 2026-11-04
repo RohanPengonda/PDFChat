@@ -21,6 +21,7 @@ pnpm-debug.log*
 database.sqlite
 database.sqlite-shm
 database.sqlite-wal
+database.key
 
 # Uploaded PDFs
 uploads/*

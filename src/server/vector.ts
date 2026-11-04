@@ -118,27 +118,22 @@ class LocalVectorStore implements VectorStore {
 
     const query = filter?.query || '';
 
-    // Build SQL-side keyword pre-filter so we don't load every chunk into
-    // memory. Split the query into words and match chunks containing any of
-    // them. If nothing matches, fall back to all chunks (semantic-only search).
+    // Keyword pre-filter. Chunk content is encrypted at rest, so the LIKE
+    // pre-filter now runs on decrypted in-memory chunks instead of SQL.
     const queryWords = query
       .toLowerCase()
       .split(/\s+/)
       .filter((w) => w.length > 2);
-    let sqlFilteredChunks: ChunkRow[] | null = null;
+    let chunks = allChunks;
+    let usedKeywordFilter = false;
     if (queryWords.length > 0) {
-      const conditions = queryWords.map(() => 'LOWER(content) LIKE ?').join(' OR ');
-      const params = queryWords.map((w) => `%` + w + `%`);
-      try {
-        const likeChunks = (filter && Array.isArray(filter.pdf_ids)
-          ? db.getChunksByDocumentIdsLike(filter.pdf_ids, conditions, params)
-          : db.getAllChunksLike(conditions, params)) as ChunkRow[];
-        if (likeChunks.length > 0) sqlFilteredChunks = likeChunks;
-      } catch {
-        // Fall through to all chunks if LIKE query fails.
+      const lowerContents = allChunks.map((c) => (c.content || '').toLowerCase());
+      const filtered = allChunks.filter((c, i) => queryWords.some((w) => lowerContents[i].includes(w)));
+      if (filtered.length > 0) {
+        chunks = filtered;
+        usedKeywordFilter = true;
       }
     }
-    const chunks = sqlFilteredChunks ?? allChunks;
 
     const results = await this.scoreChunks(vector, topK, filter, chunks);
     if (results.length > 0) return results;
@@ -146,7 +141,7 @@ class LocalVectorStore implements VectorStore {
     // The keyword pre-filter pool produced no qualifying chunk; retry against
     // the full scoped set so semantically-relevant chunks that lack literal
     // query words are still considered.
-    if (sqlFilteredChunks) {
+    if (usedKeywordFilter) {
       return this.scoreChunks(vector, topK, filter, allChunks);
     }
     return results;
