@@ -211,6 +211,11 @@ async function startServer() {
   const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   app.use('/api', (req, res, next) => {
     if (!STATE_CHANGING_METHODS.has(req.method) || !authRequired) return next();
+    // Login is the bootstrap endpoint: a first-time visitor has no CSRF cookie
+    // yet, and the token exchange establishes the session. Exempt it from the
+    // double-submit check so fresh installs can authenticate at all.
+    const path = req.path.replace(/^\/api/, '') || '/';
+    if (path === '/login') return next();
     const cookie = req.headers.cookie || '';
     const match = cookie.match(/(?:^|;\s*)pdfchat_csrf=([^;]+)/);
     const cookieCsrf = match ? match[1] : '';
