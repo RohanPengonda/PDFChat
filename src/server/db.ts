@@ -125,13 +125,28 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
 `);
 
+// Serialize async writes through a promise chain so concurrent writers are
+// queued instead of interleaving on the single SQLite connection.
+let writeChain: Promise<unknown> = Promise.resolve();
+
+function enqueueWrite<T>(task: () => T): Promise<T> {
+  const result = writeChain.then(() => task());
+  writeChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
 export const db = {
   // Documents
-  createDocument: (id: string, filename: string, originalName: string, userId?: string): string => {
-    const stmt = sqlite.prepare('INSERT INTO documents (id, filename, original_name, user_id) VALUES (?, ?, ?, ?)');
-    // original_name is user-supplied and can embed personal filenames; store encrypted.
-    stmt.run(id, filename, encryptText(originalName), userId || null);
-    return id;
+  createDocument: async (id: string, filename: string, originalName: string, userId?: string): Promise<string> => {
+    return enqueueWrite(() => {
+      const stmt = sqlite.prepare('INSERT INTO documents (id, filename, original_name, user_id) VALUES (?, ?, ?, ?)');
+      // original_name is user-supplied and can embed personal filenames; store encrypted.
+      stmt.run(id, filename, encryptText(originalName), userId || null);
+      return id;
+    });
   },
 
   getDocuments: (userId?: string, limit?: number, offset?: number): DocumentRow[] => {
@@ -170,14 +185,18 @@ export const db = {
     return res.changes;
   },
 
-  setDocumentSummary: (id: string, summary: string): void => {
-    sqlite.prepare('UPDATE documents SET summary = ? WHERE id = ?').run(encryptText(summary), id);
+  setDocumentSummary: async (id: string, summary: string): Promise<void> => {
+    return enqueueWrite(() => {
+      sqlite.prepare('UPDATE documents SET summary = ? WHERE id = ?').run(encryptText(summary), id);
+    });
   },
 
   // Chunks
-  createChunk: (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[], charStartPos?: number, charEndPos?: number): void => {
-    const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding, embedding_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    stmt.run(id, documentId, encryptText(content), pageNumber, chunkIndex, charStartPos ?? 0, charEndPos ?? content.length, encryptText(JSON.stringify(embedding)), EMBEDDING_VERSION);
+  createChunk: async (id: string, documentId: string, content: string, pageNumber: number, chunkIndex: number, embedding: number[], charStartPos?: number, charEndPos?: number): Promise<void> => {
+    return enqueueWrite(() => {
+      const stmt = sqlite.prepare('INSERT INTO chunks (id, document_id, content, page_number, chunk_index, char_start_pos, char_end_pos, embedding, embedding_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      stmt.run(id, documentId, encryptText(content), pageNumber, chunkIndex, charStartPos ?? 0, charEndPos ?? content.length, encryptText(JSON.stringify(embedding)), EMBEDDING_VERSION);
+    });
   },
 
   getAllChunks: (documentId?: string): ChunkRow[] => {
@@ -218,18 +237,22 @@ export const db = {
     return rows.map((r) => ({ id: r.id, content: decryptTextLoose(r.content) ?? r.content }));
   },
 
-  setChunkEmbedding: (id: string, embedding: number[]): void => {
-    sqlite
-      .prepare('UPDATE chunks SET embedding = ?, embedding_version = ? WHERE id = ?')
-      .run(encryptText(JSON.stringify(embedding)), EMBEDDING_VERSION, id);
+  setChunkEmbedding: async (id: string, embedding: number[]): Promise<void> => {
+    return enqueueWrite(() => {
+      sqlite
+        .prepare('UPDATE chunks SET embedding = ?, embedding_version = ? WHERE id = ?')
+        .run(encryptText(JSON.stringify(embedding)), EMBEDDING_VERSION, id);
+    });
   },
 
   // Chats
-  createChat: (userId?: string): string => {
-    const id = uuidv4();
-    const stmt = sqlite.prepare('INSERT INTO chats (id, title, user_id) VALUES (?, ?, ?)');
-    stmt.run(id, encryptText('New Chat'), userId || null);
-    return id;
+  createChat: async (userId?: string): Promise<string> => {
+    return enqueueWrite(() => {
+      const id = uuidv4();
+      const stmt = sqlite.prepare('INSERT INTO chats (id, title, user_id) VALUES (?, ?, ?)');
+      stmt.run(id, encryptText('New Chat'), userId || null);
+      return id;
+    });
   },
 
   getChat: (id: string, userId?: string): { id: string; title: string | null } | undefined => {
@@ -252,35 +275,43 @@ export const db = {
   },
 
   // Update chat title
-  updateChatTitle: (id: string, title: string, userId?: string): void => {
-    if (userId) {
-      sqlite.prepare('UPDATE chats SET title = ? WHERE id = ? AND (user_id = ? OR user_id IS NULL)').run(encryptText(title), id, userId);
-      return;
-    }
-    sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(encryptText(title), id);
+  updateChatTitle: async (id: string, title: string, userId?: string): Promise<void> => {
+    return enqueueWrite(() => {
+      if (userId) {
+        sqlite.prepare('UPDATE chats SET title = ? WHERE id = ? AND (user_id = ? OR user_id IS NULL)').run(encryptText(title), id, userId);
+        return;
+      }
+      sqlite.prepare('UPDATE chats SET title = ? WHERE id = ?').run(encryptText(title), id);
+    });
   },
 
   // Delete chat and its messages
-  deleteChat: (id: string, userId?: string): number => {
-    if (userId) {
-      const chat = sqlite.prepare('SELECT id FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId);
-      if (!chat) return 0;
-    }
-    sqlite.prepare('DELETE FROM messages WHERE chat_id = ?').run(id);
-    const res = sqlite.prepare('DELETE FROM chats WHERE id = ?').run(id);
-    return res.changes;
+  deleteChat: async (id: string, userId?: string): Promise<number> => {
+    return enqueueWrite(() => {
+      if (userId) {
+        const chat = sqlite.prepare('SELECT id FROM chats WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId);
+        if (!chat) return 0;
+      }
+      sqlite.prepare('DELETE FROM messages WHERE chat_id = ?').run(id);
+      const res = sqlite.prepare('DELETE FROM chats WHERE id = ?').run(id);
+      return res.changes;
+    });
   },
 
   // Messages
-  addMessage: (chatId: string, role: 'user' | 'assistant', content: string, sources?: Source[]): string => {
-    const id = uuidv4();
-    const stmt = sqlite.prepare('INSERT INTO messages (id, chat_id, role, content, sources) VALUES (?, ?, ?, ?, ?)');
-    stmt.run(id, chatId, role, encryptText(content), sources && sources.length ? encryptText(JSON.stringify(sources)) : null);
-    return id;
+  addMessage: async (chatId: string, role: 'user' | 'assistant', content: string, sources?: Source[]): Promise<string> => {
+    return enqueueWrite(() => {
+      const id = uuidv4();
+      const stmt = sqlite.prepare('INSERT INTO messages (id, chat_id, role, content, sources) VALUES (?, ?, ?, ?, ?)');
+      stmt.run(id, chatId, role, encryptText(content), sources && sources.length ? encryptText(JSON.stringify(sources)) : null);
+      return id;
+    });
   },
 
-  deleteMessage: (id: string): void => {
-    sqlite.prepare('DELETE FROM messages WHERE id = ?').run(id);
+  deleteMessage: async (id: string): Promise<void> => {
+    return enqueueWrite(() => {
+      sqlite.prepare('DELETE FROM messages WHERE id = ?').run(id);
+    });
   },
 
   getMessages: (chatId: string, userId?: string, limit?: number, offset?: number): MessageRow[] => {
@@ -310,30 +341,34 @@ export const db = {
   },
 
   // Delete document and its chunks
-  deleteDocument: (id: string, userId?: string): number => {
-    if (userId) {
-      const doc = sqlite.prepare('SELECT id FROM documents WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId);
-      if (!doc) return 0;
-    }
-    sqlite.prepare('DELETE FROM chunks WHERE document_id = ?').run(id);
-    const res = sqlite.prepare('DELETE FROM documents WHERE id = ?').run(id);
-    return res.changes;
+  deleteDocument: async (id: string, userId?: string): Promise<number> => {
+    return enqueueWrite(() => {
+      if (userId) {
+        const doc = sqlite.prepare('SELECT id FROM documents WHERE id = ? AND (user_id = ? OR user_id IS NULL)').get(id, userId);
+        if (!doc) return 0;
+      }
+      sqlite.prepare('DELETE FROM chunks WHERE document_id = ?').run(id);
+      const res = sqlite.prepare('DELETE FROM documents WHERE id = ?').run(id);
+      return res.changes;
+    });
   },
 
   // Clear all documents
-  clearAllDocuments: (userId?: string): void => {
-    if (userId) {
-      const docs = sqlite.prepare('SELECT id FROM documents WHERE user_id = ? OR user_id IS NULL').all(userId) as { id: string }[];
-      const ids = docs.map((d) => d.id);
-      if (ids.length) {
-        const placeholders = ids.map(() => '?').join(',');
-        sqlite.prepare(`DELETE FROM chunks WHERE document_id IN (${placeholders})`).run(...ids);
+  clearAllDocuments: async (userId?: string): Promise<void> => {
+    return enqueueWrite(() => {
+      if (userId) {
+        const docs = sqlite.prepare('SELECT id FROM documents WHERE user_id = ? OR user_id IS NULL').all(userId) as { id: string }[];
+        const ids = docs.map((d) => d.id);
+        if (ids.length) {
+          const placeholders = ids.map(() => '?').join(',');
+          sqlite.prepare(`DELETE FROM chunks WHERE document_id IN (${placeholders})`).run(...ids);
+        }
+        sqlite.prepare('DELETE FROM documents WHERE user_id = ? OR user_id IS NULL').run(userId);
+        return;
       }
-      sqlite.prepare('DELETE FROM documents WHERE user_id = ? OR user_id IS NULL').run(userId);
-      return;
-    }
-    sqlite.prepare('DELETE FROM chunks').run();
-    sqlite.prepare('DELETE FROM documents').run();
+      sqlite.prepare('DELETE FROM chunks').run();
+      sqlite.prepare('DELETE FROM documents').run();
+    });
   },
 
   // Close the SQLite handle. Call on process shutdown to avoid database

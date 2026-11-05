@@ -90,7 +90,7 @@ export const chatService = {
     // Persist the user message before generation, but remember its id so it can
     // be rolled back if no assistant answer is ever produced. Otherwise a failed
     // turn leaves an orphan question that duplicates on retry.
-    const userMessageId = db.addMessage(chatId, 'user', message);
+    const userMessageId = await db.addMessage(chatId, 'user', message);
 
     // 3. Generate Embedding for Query
     const queryVector = await generateEmbedding(message);

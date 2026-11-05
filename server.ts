@@ -440,7 +440,7 @@ async function startServer() {
     try {
       const userId = req.userId;
       const doc = db.getDocument(req.params.id, userId);
-      const deleted = db.deleteDocument(req.params.id, userId);
+      const deleted = await db.deleteDocument(req.params.id, userId);
       if (deleted && doc?.filename) {
         const filePath = path.join(uploadDir, doc.filename);
         if (fs.existsSync(filePath)) {
@@ -470,7 +470,7 @@ async function startServer() {
           fs.unlinkSync(filePath);
         }
       });
-      db.clearAllDocuments(userId);
+      await db.clearAllDocuments(userId);
       vectorStore.invalidate();
       res.json({ success: true });
     } catch (error) {
@@ -485,7 +485,7 @@ async function startServer() {
       const { title } = req.body;
       if (!title) return res.status(400).json({ error: 'Title required' });
       const userId = req.userId;
-      db.updateChatTitle(req.params.id, title, userId);
+      await db.updateChatTitle(req.params.id, title, userId);
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: 'Failed to update title' });
@@ -496,7 +496,7 @@ async function startServer() {
   app.delete('/api/chats/:chatId', async (req, res) => {
     try {
       const userId = req.userId;
-      const deleted = db.deleteChat(req.params.chatId, userId);
+      const deleted = await db.deleteChat(req.params.chatId, userId);
       if (!deleted) return res.status(404).json({ error: 'Chat not found' });
       res.json({ success: true });
     } catch (error) {
@@ -517,7 +517,7 @@ async function startServer() {
       const isFailurePlaceholder = !cachedSummary || cachedSummary === 'Could not generate summary.';
       if (!isFailurePlaceholder) return res.json({ summary: cachedSummary });
       const summary = await chatService.generateSummary(req.params.id, model);
-      db.setDocumentSummary(req.params.id, summary);
+      await db.setDocumentSummary(req.params.id, summary);
       res.json({ summary });
     } catch (error) {
       console.error('Summary error:', error);
@@ -630,7 +630,7 @@ async function startServer() {
         if (doc.filename) {
           try { fs.unlinkSync(path.join(uploadDir, path.basename(doc.filename))); } catch {}
         }
-        try { db.deleteDocument(doc.id); } catch {}
+        try { await db.deleteDocument(doc.id); } catch {}
       }
       for (const entry of fs.readdirSync(uploadDir)) {
         // Never touch dotfiles (e.g. .gitkeep).
