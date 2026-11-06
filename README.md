@@ -291,6 +291,7 @@ These are created on first run and are git-ignored:
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/api/auth/status` | Public. Returns `{ required, authenticated }` so the UI knows whether to show the login screen |
+| `POST` | `/api/login` | Token login. Exchange a token for an authenticated session; protected by a stricter auth rate limit |
 | `POST` | `/api/upload` | Multipart `file` upload (PDF-only, 50MB); ingests and indexes the PDF. Protected if auth enabled. |
 | `GET` | `/api/documents` | List indexed documents; accepts optional `?limit=` and `?offset=` |
 | `GET` | `/api/documents/:id/content` | Stream the stored PDF |
@@ -312,7 +313,7 @@ These are created on first run and are git-ignored:
 ├── server.ts              # Express app, routes, Vite middleware
 ├── src/
 │   ├── App.tsx            # Layout, theming, document/chat state
-│   ├── components/        # ChatInterface, PDFViewer, UploadZone, SummaryModal
+│   ├── components/        # ChatInterface, PDFViewer, UploadZone, SummaryModal, LoginScreen, Toast, ErrorBoundary, ConfirmDialog
 │   ├── hooks/useChat.ts   # SSE consumption, message state, suggestions
 │   ├── lib/api.ts         # Typed fetch wrappers
 │   ├── lib/gfm.ts         # Small GFM remark plugin (strikethrough, task lists)
