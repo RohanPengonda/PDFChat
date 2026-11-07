@@ -33,7 +33,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **💾 Persistent chats**: Messages stored in SQLite and reloaded on refresh
 - **🔐 Token authentication**: The UI shows a login screen when auth is enabled; every request (API, SSE stream, and PDF fetch) carries `Authorization: Bearer <token>`. `AUTH_TOKEN` gives one shared workspace, `AUTH_TOKENS` maps each token to a distinct user id for real isolation. Required in production.
 - **📤 Resilient uploads**: Uploads run over `XMLHttpRequest` so the zone can show a live progress bar, retry automatically up to 3 times with linear backoff on network or server failure, and surface the server's error message with a manual "Retry" button
-- **🛡️ Hardened request handling**: Content-Security-Policy on every response (relaxed only in development for Vite HMR), model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 30-requests/minute per-IP budget on AI endpoints, a 120s hard cap on chat streams, and strict tenant scoping on every document/chat read and delete
+- **🛡️ Hardened request handling**: Content-Security-Policy on every response (relaxed only in development for Vite HMR), model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 30-requests/minute per-IP budget on AI endpoints, a configurable hard cap on chat streams (default 120s, set `CHAT_STREAM_TIMEOUT_MS` to change it), and strict tenant scoping on every document/chat read and delete
 - **📃 Paginated reads**: `GET /api/documents` and `GET /api/chats/:chatId` accept `limit` / `offset`, so large libraries and long chat histories can be paged instead of loaded in one shot
 
 ---
@@ -83,7 +83,7 @@ A single Node process serves both the API and the React SPA. Vite runs in middle
 #### Backend (`server.ts`, `src/server/`)
 
 - **API server** — Express with JSON body parsing, Multer uploads, and SSE streaming for chat
-- **Guardrails** (`server.ts`) — token auth middleware, CSP header, per-IP rate limiting on AI endpoints, per-user upload quota, upload magic-byte validation, and a hard timeout on chat streams
+- **Guardrails** (`server.ts`) — token auth middleware, CSP header, per-IP rate limiting on AI endpoints, per-user upload quota, upload magic-byte validation, and a hard timeout on chat streams (default 120s, configurable via `CHAT_STREAM_TIMEOUT_MS`)
 - **Ingestion** (`ingestion.ts`) — PDF.js text extraction per page, then chunking (`chunking.ts`), embedding through Gemini with a lexical fallback (`embedding.ts`), and batch insert
 - **Retrieval** (`vector.ts`) — scoped SQL fetch with a keyword pre-filter, hybrid similarity scoring (`similarity.ts`), MMR diversification, relevance gate, returns top-K
 - **Chat orchestration** (`chat.ts`) — prompt assembly, Gemini streaming with retry, citation parsing, cached suggestions, source payloads
@@ -132,7 +132,7 @@ Sources frame (post-stream) ► citation chips with confidence %
 - **Upload resilience** — `fetch` cannot report upload progress, so the upload zone uses `XMLHttpRequest` for byte-level progress and retries failed requests (network errors and 4xx/5xx) up to 3 times with 1s/2s/3s backoff before surfacing the error
 - **Defense in depth** — CSP blocks injected scripts (relaxed only in development for Vite HMR, strict in production), Markdown links are filtered to `http(s)` so a malicious model answer cannot ship a `javascript:` URL, the PDF viewer refreshes its auth headers when the token changes, and AI endpoints are rate limited per IP
 - **Local storage, hosted embeddings** — SQLite, retrieval, and PDF storage are local; the only network dependency is Gemini (chat/completions plus embeddings), and the lexical fallback keeps search working if the embedding endpoint is down
-- **Retry policy** — chat streams make up to 5 attempts on 429/503 and network-level errors, honoring `Retry-After` when present and otherwise backing off 10s/15s/20s/25s; failures are surfaced to the UI as an SSE `error` frame, and a hard 120s timeout closes a stream that stalls
+- **Retry policy** — chat streams make up to 5 attempts on 429/503 and network-level errors, honoring `Retry-After` when present and otherwise backing off 10s/15s/20s/25s; failures are surfaced to the UI as an SSE `error` frame, and a hard timeout (default 120s, configurable via `CHAT_STREAM_TIMEOUT_MS`) closes a stream that stalls
 
 ---
 

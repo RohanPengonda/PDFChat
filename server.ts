@@ -384,13 +384,15 @@ async function startServer() {
       res.once('finish', stopHeartbeat);
 
       // Hard cap on total stream time so a hung model cannot hold a connection
-      // (and a worker thread) open indefinitely.
+      // (and a worker thread) open indefinitely. Configurable via
+      // CHAT_STREAM_TIMEOUT_MS (milliseconds); defaults to 120s.
+      const streamTimeoutMs = Number(process.env.CHAT_STREAM_TIMEOUT_MS) || 120_000;
       const streamTimeout = setTimeout(() => {
         if (!res.writableEnded) {
           res.write(`data: ${JSON.stringify({ error: 'The model took too long to respond. Please try again.' })}\n\n`);
           res.end();
         }
-      }, 120_000);
+      }, streamTimeoutMs);
       const stopStreamTimeout = () => clearTimeout(streamTimeout);
 
       const userId = req.userId;
