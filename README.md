@@ -33,7 +33,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **💾 Persistent chats**: Messages stored in SQLite and reloaded on refresh
 - **🔐 Token authentication**: The UI shows a login screen when auth is enabled; every request (API, SSE stream, and PDF fetch) carries `Authorization: Bearer <token>`. `AUTH_TOKEN` gives one shared workspace, `AUTH_TOKENS` maps each token to a distinct user id for real isolation. Required in production.
 - **📤 Resilient uploads**: Uploads run over `XMLHttpRequest` so the zone can show a live progress bar, retry automatically up to 3 times with linear backoff on network or server failure, and surface the server's error message with a manual "Retry" button
-- **🛡️ Hardened request handling**: Content-Security-Policy on every response (relaxed only in development for Vite HMR), model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 30-requests/minute per-IP budget on AI endpoints, a configurable hard cap on chat streams (default 120s, set `CHAT_STREAM_TIMEOUT_MS` to change it), and strict tenant scoping on every document/chat read and delete
+- **🛡️ Hardened request handling**: Content-Security-Policy on every response (relaxed only in development for Vite HMR), model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 30-requests/minute per-IP budget on AI endpoints, a configurable hard cap on chat streams (default 120s, set `CHAT_STREAM_TIMEOUT_MS` to change it), a hard 300-second cap on upload ingestion (set `INGESTION_TIMEOUT_MS` to change it, so a stalled extraction or embedding step cannot hold the upload open indefinitely), and strict tenant scoping on every document/chat read and delete
 - **📃 Paginated reads**: `GET /api/documents` and `GET /api/chats/:chatId` accept `limit` / `offset`, so large libraries and long chat histories can be paged instead of loaded in one shot
 
 ---
@@ -101,6 +101,8 @@ PDF Upload (PDF-only, magic-byte checked, 50MB limit, per-user quota) → PDF.js
 ```
 
 Embeddings are produced by Gemini `text-embedding-004` (768 dimensions, L2-normalized) during ingestion. If the embedding API is unavailable, a deterministic local lexical hasher (word tokens, character n-grams) takes over, so uploads and search never fail outright. Each chunk records the `embedding_version` it was built with; chunks from an older algorithm are transparently re-embedded on boot. Re-indexing runs *after* the server starts accepting connections and processes chunks in batches of 50 that yield to the event loop, so a large backlog never blocks startup.
+
+**Interrupted-ingestion safety**: the document row is only committed *after* PDF text extraction and chunking succeed (before the embedding/insert loop), and the server deletes orphaned uploads — rows with no chunks left behind by a killed/interrupted ingestion — at boot, so a phantom document never resurfaces in the library after a restart.
 
 #### Query Processing
 
