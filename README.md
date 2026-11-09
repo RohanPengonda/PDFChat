@@ -1,4 +1,4 @@
-# PDFChat
+# PDF Chat
 
 **Intelligent Document Analysis Through Conversational AI** — Transform static PDFs into interactive knowledge bases with AI-powered retrieval and contextual answers.
 
