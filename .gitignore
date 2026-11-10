@@ -22,6 +22,7 @@ database.sqlite
 database.sqlite-shm
 database.sqlite-wal
 database.key
+database.key.bak
 
 # Uploaded PDFs
 uploads/*

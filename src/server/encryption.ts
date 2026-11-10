@@ -14,16 +14,25 @@ const IV_LENGTH_BYTES = 12;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const keyFilePath = path.resolve(__dirname, '../../database.key');
 
+let cachedKey: Buffer | null = null;
+
 function getKey(): Buffer {
+  if (cachedKey) return cachedKey;
   const fromEnv = process.env.DB_ENCRYPTION_KEY;
   if (fromEnv) {
     const key = Buffer.from(fromEnv, 'base64');
-    if (key.length === 32) return key;
+    if (key.length === 32) {
+      cachedKey = key;
+      return key;
+    }
   }
   try {
     const stored = fs.readFileSync(keyFilePath, 'utf8').trim();
     const key = Buffer.from(stored, 'base64');
-    if (key.length === 32) return key;
+    if (key.length === 32) {
+      cachedKey = key;
+      return key;
+    }
   } catch {
     // Key file not found yet; create one below.
   }
@@ -31,9 +40,17 @@ function getKey(): Buffer {
   try {
     fs.mkdirSync(path.dirname(keyFilePath), { recursive: true });
     fs.writeFileSync(keyFilePath, key.toString('base64'), { mode: 0o600 });
+    // Best-effort backup so the key survives accidental deletion of the
+    // primary file (the DB itself is encrypted, so it cannot hold the key).
+    try {
+      fs.copyFileSync(keyFilePath, `${keyFilePath}.bak`);
+    } catch {
+      // Backup is best-effort; ignore failures (e.g. cross-device).
+    }
   } catch {
     // Fall back to an in-memory key if the key file is not writable.
   }
+  cachedKey = key;
   return key;
 }
 
