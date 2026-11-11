@@ -5,6 +5,7 @@ import { ChatInterface } from "./components/ChatInterface";
 import { SummaryModal } from "./components/SummaryModal";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { LoginScreen } from "./components/LoginScreen";
+import { Landing } from "./components/Landing";
 import { useToast } from "./components/Toast";
 import { useChat, Source } from "./hooks/useChat";
 import { api } from "./lib/api";
@@ -56,6 +57,13 @@ export default function App() {
   const [authState, setAuthState] = useState<"checking" | "login" | "ready">(
     "checking",
   );
+  const [view, setView] = useState<"landing" | "app">("landing");
+
+  const handleTryNow = () => {
+    // "Try Now" hands off to the main application; the auth gate inside takes
+    // it from there (login screen when auth is required, workspace when not).
+    setView("app");
+  };
 
   useEffect(() => {
     setMode(selectedDocId ? "single" : "all");
@@ -488,6 +496,10 @@ export default function App() {
       isLoadingSummary={summaryLoadingId === selectedDocId}
     />
   );
+
+  if (view === "landing") {
+    return <Landing onTryNow={handleTryNow} isDark={isDark} />;
+  }
 
   if (authState === "checking") {
     return (
