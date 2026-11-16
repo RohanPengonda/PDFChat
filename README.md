@@ -35,6 +35,7 @@ PDFChat lets you hold natural language conversations with your PDFs. Instead of 
 - **📤 Resilient uploads**: Uploads run over `XMLHttpRequest` so the zone can show a live progress bar, retry automatically up to 3 times with linear backoff on network or server failure, and surface the server's error message with a manual "Retry" button
 - **🛡️ Hardened request handling**: Content-Security-Policy on every response (relaxed only in development for Vite HMR), model-authored Markdown links restricted to `http(s)`, a per-user upload quota, a 30-requests/minute per-IP budget on AI endpoints, a configurable hard cap on chat streams (default 120s, set `CHAT_STREAM_TIMEOUT_MS` to change it), a hard 300-second cap on upload ingestion (set `INGESTION_TIMEOUT_MS` to change it, so a stalled extraction or embedding step cannot hold the upload open indefinitely), and strict tenant scoping on every document/chat read and delete
 - **📃 Paginated reads**: `GET /api/documents` and `GET /api/chats/:chatId` accept `limit` / `offset`, so large libraries and long chat histories can be paged instead of loaded in one shot
+- **🌐 Landing page**: The app opens on a marketing landing page (hero, how-it-works, features, pricing) with a **Get Started Free** CTA that hands off to the main application; the login and pricing screens remain on the roadmap
 
 ---
 

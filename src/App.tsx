@@ -498,7 +498,7 @@ export default function App() {
   );
 
   if (view === "landing") {
-    return <Landing onTryNow={handleTryNow} isDark={isDark} />;
+    return <Landing onTryNow={handleTryNow} onSignIn={handleTryNow} isDark={isDark} />;
   }
 
   if (authState === "checking") {
