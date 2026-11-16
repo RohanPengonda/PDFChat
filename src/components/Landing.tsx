@@ -374,8 +374,19 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
 
       {/* ── Footer ── */}
       <footer className="relative border-t py-6" style={{ borderColor: isDark ? "#2d3548" : "#d8d0c4" }}>
-        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <span className={clsx("text-xs font-semibold", text)}>PDFChat</span>
+          <nav className="flex items-center gap-6">
+            {menu.map((m) => (
+              <a
+                key={m.href}
+                href={m.href}
+                className={clsx("text-xs", isDark ? "text-[#6b7a99]" : "text-[#8a7d6b]", "hover:text-current transition-colors")}
+              >
+                {m.label}
+              </a>
+            ))}
+          </nav>
           <span className={clsx("text-[11px]", subtext)}>Chat with your documents using AI</span>
         </div>
       </footer>
