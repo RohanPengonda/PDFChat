@@ -195,7 +195,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
       price: "$9",
       period: "/month",
       tagline: "For power users & researchers",
-      cta: "Start Pro Trial",
+      cta: "Coming Soon",
       featured: false,
       features: [
         "Unlimited documents",
@@ -205,7 +205,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
         "Export conversations (PDF/MD)",
         "API access (coming soon)",
       ],
-      onCta: onTryNow,
+      onCta: undefined,
     },
     // {
     //   name: "Team",
@@ -326,7 +326,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
             <button
               onClick={onTryNow}
               className={clsx(
-                "rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200 hover:scale-105 shadow-lg whitespace-nowrap",
+                "inline-flex items-center rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200 hover:scale-105 shadow-lg whitespace-nowrap flex-nowrap",
                 btn,
                 "shadow-[#b5651d]/30",
               )}
@@ -359,7 +359,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
               ))}
               <div className="pt-2 flex flex-col gap-2">
                 <button onClick={onSignIn} className={clsx("w-full rounded-xl px-5 py-2.5 text-sm font-semibold border text-left", btnSecondary)}>Sign In</button>
-                <button onClick={onTryNow} className={clsx("w-full rounded-xl px-6 py-3 text-sm font-semibold whitespace-nowrap", btn)}>Start Free <ArrowRight className="w-4 h-4 inline ml-2 flex-shrink-0" /></button>
+                <button onClick={onTryNow} className={clsx("w-full rounded-xl px-6 py-3 text-sm font-semibold whitespace-nowrap flex-nowrap", btn)}>Start Free <ArrowRight className="w-4 h-4 inline ml-2 flex-shrink-0" /></button>
               </div>
             </div>
           </div>
@@ -401,7 +401,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
           <button
             onClick={onTryNow}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap",
+              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap flex-nowrap",
               btn,
               "shadow-[#b5651d]/40",
             )}
@@ -412,7 +412,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
           <a
             href="#how-it-works"
             className={clsx(
-              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-all duration-200 hover:scale-[1.02] whitespace-nowrap",
+              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-all duration-200 hover:scale-[1.02] whitespace-nowrap flex-nowrap",
               isDark ? "border-[#2d3548] text-[#e8eaf0] hover:bg-[#252d40]" : "border-[#d8d0c4] text-[#2c2416] hover:bg-[#f0e5d8]",
             )}
           >
@@ -693,7 +693,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
               <button
                 onClick={onTryNow}
                 className={clsx(
-                  "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap",
+                  "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap flex-nowrap",
                   btn,
                   "shadow-[#b5651d]/40",
                 )}
@@ -724,16 +724,17 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
             </p>
           </div>
 
-          <div className="mt-10 grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
+          <div className="mt-10 grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
             {plans.map((p, i) => (
               <article key={p.name} className="relative group" style={fadeUp(100 * (i + 1))}>
                 <div className={clsx(
-                  "rounded-2xl border p-5 md:p-7 h-full flex flex-col transition-all duration-300",
+                  "rounded-2xl border flex flex-col transition-all duration-300",
                   card,
-                  p.featured && "ring-2 relative"
+                  p.featured && "ring-2 relative",
+                  p.featured ? "p-5 md:p-7 pt-10 md:pt-12" : "p-5 md:p-7"
                 )} style={{ borderColor: p.featured ? (isDark ? "#2979ff" : "#b5651d") : undefined }}>
                   {p.featured && (
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2">
                       <span className={clsx("inline-block text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full", isDark ? "bg-[#2979ff]/20 text-[#5b9cf6]" : "bg-[#b5651d]/20 text-[#b5651d]")}>
                         Most Popular
                       </span>
@@ -759,16 +760,16 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                   </ul>
                   <button
                     onClick={p.onCta}
-                    disabled={p.name === "Team"}
+                    disabled={p.name === "Pro" || p.name === "Team"}
                     className={clsx(
-                      "w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap",
+                      "inline-flex items-center gap-2 justify-center rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex-nowrap",
                       p.featured
                         ? clsx(btn, "shadow-lg", "shadow-[#b5651d]/40")
                         : btnSecondary,
                     )}
                   >
                     {p.cta}
-                    {p.name !== "Team" && <ArrowRight className="w-4 h-4 ml-2 flex-shrink-0" />}
+                    {p.name !== "Team" && p.name !== "Pro" && <ArrowRight className="w-4 h-4 ml-2 flex-shrink-0" />}
                   </button>
                   {p.name === "Team" && (
                     <p className={clsx("mt-3 text-center text-[11px]", subtext)}>Custom pricing for your organization</p>
@@ -780,7 +781,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
 
           <div className="mt-8 text-center" style={fadeIn(300)}>
             <p className={clsx("text-sm mb-3", subtext)}>Need a custom plan? Enterprise features available.</p>
-            <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold border transition-colors whitespace-nowrap", btnSecondary)}>
+            <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold border transition-colors whitespace-nowrap flex-nowrap", btnSecondary)}>
               Contact Sales
               <ArrowRight className="w-4 h-4 flex-shrink-0" />
             </button>
@@ -806,7 +807,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                 <button
                   onClick={onTryNow}
                   className={clsx(
-                    "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap",
+                    "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap flex-nowrap",
                     btn,
                     "shadow-[#b5651d]/40",
                   )}
@@ -814,7 +815,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                   Get Started Free
                   <ArrowRight className="w-5 h-5 flex-shrink-0" />
                 </button>
-                <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-colors whitespace-nowrap", btnSecondary)}>
+                <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-colors whitespace-nowrap flex-nowrap", btnSecondary)}>
                   See Demo
                 </button>
               </div>
