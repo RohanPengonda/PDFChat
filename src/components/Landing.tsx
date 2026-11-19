@@ -63,7 +63,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
 
   // Data
   const menu = [
-    { label: "Product", href: "#features" },
+    { label: "Product", href: "#product" },
     { label: "Features", href: "#features" },
     { label: "How it works", href: "#how-it-works" },
     { label: "Pricing", href: "#pricing" },
@@ -227,7 +227,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
   ];
 
   return (
-    <div className={clsx("relative min-h-dvh font-sans", bg)}>
+    <div id="top" className={clsx("relative min-h-dvh font-sans", bg)}>
       <style>{`
         @keyframes lpFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes lpFloat { 0%, 100% { transform: translateY(0) rotate(0deg); } 33% { transform: translateY(-12px) rotate(0.5deg); } 66% { transform: translateY(4px) rotate(-0.5deg); } }
@@ -287,7 +287,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
       >
         <nav className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-6 relative">
           {/* Logo */}
-          <a href="#features" className="flex items-center gap-2 flex-shrink-0" aria-label="PDFChat Home">
+          <a href="#top" className="flex items-center gap-2 flex-shrink-0" aria-label="PDFChat Home">
             <span
               className={clsx(
                 "inline-flex items-center justify-center w-9 h-9 rounded-xl",
@@ -326,7 +326,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
             <button
               onClick={onTryNow}
               className={clsx(
-                "inline-flex items-center rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200 hover:scale-105 shadow-lg whitespace-nowrap flex-nowrap",
+                "inline-flex items-center rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200 hover:scale-105 shadow-lg whitespace-nowrap",
                 btn,
                 "shadow-[#b5651d]/30",
               )}
@@ -358,8 +358,8 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                 </a>
               ))}
               <div className="pt-2 flex flex-col gap-2">
-                <button onClick={onSignIn} className={clsx("w-full rounded-xl px-5 py-2.5 text-sm font-semibold border text-left", btnSecondary)}>Sign In</button>
-                <button onClick={onTryNow} className={clsx("w-full rounded-xl px-6 py-3 text-sm font-semibold whitespace-nowrap flex-nowrap", btn)}>Start Free <ArrowRight className="w-4 h-4 inline ml-2 flex-shrink-0" /></button>
+                <button onClick={() => { setMobileMenuOpen(false); onSignIn?.(); }} className={clsx("w-full rounded-xl px-5 py-2.5 text-sm font-semibold border text-left", btnSecondary)}>Sign In</button>
+                <button onClick={() => { setMobileMenuOpen(false); onTryNow(); }} className={clsx("w-full rounded-xl px-6 py-3 text-sm font-semibold whitespace-nowrap", btn)}>Start Free <ArrowRight className="w-4 h-4 inline ml-2 flex-shrink-0" /></button>
               </div>
             </div>
           </div>
@@ -367,7 +367,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
       </header>
 
       {/* ── Hero ── */}
-      <section id="features" className="relative max-w-7xl mx-auto px-6 pt-24 md:pt-32 pb-16 md:pb-24">
+      <section id="product" className="relative max-w-7xl mx-auto px-6 pt-24 md:pt-32 pb-16 md:py-24 scroll-mt-20">
         {/* Badge */}
         <div style={fadeUp(0)}>
           <span
@@ -382,12 +382,12 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
         </div>
 
         {/* Headline */}
-        <h1 className={clsx("mt-6 text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1]", text)} style={fadeUp(100)}>
+        <h1 className={clsx("mt-6 text-center text-4xl md:text-6xl lg:text-6xl font-bold tracking-tight leading-[1.1]", text)} style={fadeUp(100)}>
           Chat with your PDFs
           <br />
           <span className="relative" style={{ color: isDark ? "#5b9cf6" : "#b5651d" }}>
             <span className="relative z-10">Get answers, not just search results</span>
-            <span className="absolute bottom-2 left-0 right-0 h-3 -z-10 rounded-full" style={{ background: isDark ? "rgba(37,99,235,0.3)" : "rgba(181,101,29,0.25)" }} />
+            <span className="absolute bottom-2 left-0 right-0 h-3 -z-10 rounded-full"  />
           </span>
         </h1>
 
@@ -401,7 +401,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
           <button
             onClick={onTryNow}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap flex-nowrap",
+              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap",
               btn,
               "shadow-[#b5651d]/40",
             )}
@@ -412,7 +412,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
           <a
             href="#how-it-works"
             className={clsx(
-              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-all duration-200 hover:scale-[1.02] whitespace-nowrap flex-nowrap",
+              "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-all duration-200 hover:scale-[1.02] whitespace-nowrap",
               isDark ? "border-[#2d3548] text-[#e8eaf0] hover:bg-[#252d40]" : "border-[#d8d0c4] text-[#2c2416] hover:bg-[#f0e5d8]",
             )}
           >
@@ -459,7 +459,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
               </div>
 
               {/* Chat Content */}
-              <div className="p-6 md:p-8 h-[420px] flex flex-col">
+              <div className="p-4 sm:p-6 md:p-8 h-[500px] md:h-[420px] flex flex-col">
                 {/* Welcome Message */}
                 <div className="flex items-start gap-3 mb-6">
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: isDark ? "rgba(37,99,235,0.2)" : "rgba(181,101,29,0.15)" }}>
@@ -494,15 +494,15 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                         Based on the contract, liability is <span style={{ color: isDark ? "#5b9cf6" : "#b5651d" }}>capped at the total fees paid</span> <span style={{ color: isDark ? "#5b9cf6" : "#b5651d" }}>[1]</span>. Indemnification requires <span style={{ color: isDark ? "#5b9cf6" : "#b5651d" }}>mutual defense</span> for IP claims and <span style={{ color: isDark ? "#5b9cf6" : "#b5651d" }}>breach of confidentiality</span> <span style={{ color: isDark ? "#5b9cf6" : "#b5651d" }}>[2][3]</span>.
                       </div>
                       <div className="px-4 pb-4 flex flex-wrap gap-2">
-                        <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#5b9cf6" : "#b5651d", border: isDark ? "1px solid #2d3548" : "1px solid #e0d8cc" }}>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#5b9cf6" : "#b5651d", border: isDark ? "1px solid #2d3548" : "1px solid #e0d8cc" }}>
                           <FileSearch className="w-3 h-3" /> Source 1 — p.12
-                        </button>
-                        <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#5b9cf6" : "#b5651d", border: isDark ? "1px solid #2d3548" : "1px solid #e0d8cc" }}>
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#5b9cf6" : "#b5651d", border: isDark ? "1px solid #2d3548" : "1px solid #e0d8cc" }}>
                           <FileSearch className="w-3 h-3" /> Source 2 — p.14
-                        </button>
-                        <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#5b9cf6" : "#b5651d", border: isDark ? "1px solid #2d3548" : "1px solid #e0d8cc" }}>
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#5b9cf6" : "#b5651d", border: isDark ? "1px solid #2d3548" : "1px solid #e0d8cc" }}>
                           <FileSearch className="w-3 h-3" /> Source 3 — p.15
-                        </button>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -533,7 +533,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
             </div>
 
             {/* Floating stat badges */}
-            <div className="absolute -top-4 -right-4 flex flex-col gap-2">
+            <div className="hidden sm:flex absolute -top-4 -right-4 flex-col gap-2">
               <div className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-1.5" style={{ background: isDark ? "rgba(37,99,235,0.9)" : "rgba(181,101,29,0.9)", color: "white", backdropFilter: "blur(10px)" }}>
                 <Zap className="w-3 h-3" /> <span>Streaming</span>
               </div>
@@ -550,7 +550,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
         {/* Metrics Strip */}
         <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4" style={fadeUp(560)}>
           {stats.map((s, _i) => (
-            <div key={s.label} className="relative rounded-2xl border p-5 group" style={{ background: isDark ? "rgba(30,36,51,0.7)" : "rgba(250,248,245,0.7)", borderColor: isDark ? "#2d3548" : "#e0d8cc", backdropFilter: "blur(10px)" }}>
+            <div key={s.label} className="relative overflow-hidden rounded-2xl border p-5 group" style={{ background: isDark ? "rgba(30,36,51,0.7)" : "rgba(250,248,245,0.7)", borderColor: isDark ? "#2d3548" : "#e0d8cc", backdropFilter: "blur(10px)" }}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: isDark ? "rgba(37,99,235,0.2)" : "rgba(181,101,29,0.15)" }}>
                   <s.icon className="w-4 h-4" style={{ color: isDark ? "#5b9cf6" : "#b5651d" }} />
@@ -565,7 +565,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
       </section>
 
       {/* ── How It Works ── */}
-      <section id="how-it-works" className="relative py-16 md:py-24">
+      <section id="how-it-works" className="relative py-16 md:py-24 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto" style={fadeUp(0)}>
             <span className={clsx("inline-block text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full border mb-4", isDark ? "bg-[#252d40] text-[#5b9cf6] border-[#2d3548]" : "bg-[#f0e5d8] text-[#b5651d] border-[#e0d8cc]")}>
@@ -644,7 +644,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
       </section>
 
       {/* ── Features ── */}
-      <section id="features" className="relative py-16 md:py-24">
+      <section id="features" className="relative py-16 md:py-24 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto" style={fadeUp(0)}>
             <span className={clsx("inline-block text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full border mb-4", isDark ? "bg-[#252d40] text-[#5b9cf6] border-[#2d3548]" : "bg-[#f0e5d8] text-[#b5651d] border-[#e0d8cc]")}>
@@ -693,7 +693,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
               <button
                 onClick={onTryNow}
                 className={clsx(
-                  "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap flex-nowrap",
+                  "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap",
                   btn,
                   "shadow-[#b5651d]/40",
                 )}
@@ -710,7 +710,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
       </section>
 
       {/* ── Pricing ── */}
-      <section id="pricing" className="relative py-16 md:py-24">
+      <section id="pricing" className="relative py-16 md:py-24 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto" style={fadeUp(0)}>
             <span className={clsx("inline-block text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full border mb-4", isDark ? "bg-[#252d40] text-[#5b9cf6] border-[#2d3548]" : "bg-[#f0e5d8] text-[#b5651d] border-[#e0d8cc]")}>
@@ -750,8 +750,8 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                   </div>
                   <ul className="flex-1 space-y-2.5 mb-7">
                     {p.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm" style={{ color: text }}>
-                        <div className="w-4.5 h-4.5 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: isDark ? "rgba(40,167,69,0.2)" : "rgba(40,167,69,0.15)" }}>
+                      <li key={f} className={clsx("flex items-start gap-2.5 text-sm", text)}>
+                        <div className="w-4 h-4 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: isDark ? "rgba(40,167,69,0.2)" : "rgba(40,167,69,0.15)" }}>
                           <Check className="w-3 h-3" style={{ color: "#28a745" }} />
                         </div>
                         <span>{f}</span>
@@ -762,7 +762,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                     onClick={p.onCta}
                     disabled={p.name === "Pro" || p.name === "Team"}
                     className={clsx(
-                      "inline-flex items-center gap-2 justify-center rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex-nowrap",
+                      "inline-flex items-center gap-2 justify-center rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap",
                       p.featured
                         ? clsx(btn, "shadow-lg", "shadow-[#b5651d]/40")
                         : btnSecondary,
@@ -781,7 +781,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
 
           <div className="mt-8 text-center" style={fadeIn(300)}>
             <p className={clsx("text-sm mb-3", subtext)}>Need a custom plan? Enterprise features available.</p>
-            <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold border transition-colors whitespace-nowrap flex-nowrap", btnSecondary)}>
+            <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold border transition-colors whitespace-nowrap", btnSecondary)}>
               Contact Sales
               <ArrowRight className="w-4 h-4 flex-shrink-0" />
             </button>
@@ -807,7 +807,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                 <button
                   onClick={onTryNow}
                   className={clsx(
-                    "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap flex-nowrap",
+                    "inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-xl whitespace-nowrap",
                     btn,
                     "shadow-[#b5651d]/40",
                   )}
@@ -815,7 +815,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                   Get Started Free
                   <ArrowRight className="w-5 h-5 flex-shrink-0" />
                 </button>
-                <button onClick={onSignIn} className={clsx("inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-colors whitespace-nowrap flex-nowrap", btnSecondary)}>
+                <button onClick={onTryNow} className={clsx("inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold border transition-colors whitespace-nowrap", btnSecondary)}>
                   See Demo
                 </button>
               </div>
@@ -830,7 +830,7 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
             {/* Brand */}
             <div className="col-span-2 md:col-span-2">
-              <a href="#features" className="flex items-center gap-2 mb-5" aria-label="PDFChat Home">
+              <a href="#top" className="flex items-center gap-2 mb-5" aria-label="PDFChat Home">
                 <span className={clsx("inline-flex items-center justify-center w-9 h-9 rounded-xl", isDark ? "bg-gradient-to-br from-[#2979ff] to-[#8b5cf6]" : "bg-gradient-to-br from-[#b5651d] to-[#d48525]")}>
                   <FileSearch className="w-5 h-5 text-white" />
                 </span>
@@ -840,15 +840,12 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                 Chat with your documents using AI. Get cited answers grounded in your files.
               </p>
               <div className="flex items-center gap-3">
-                <a href="#" className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#6b7a99" : "#8a7d6b" }} aria-label="GitHub">
+                <a href="https://github.com/RohanPengonda/PDFChat" target="_blank" rel="noreferrer" className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#6b7a99" : "#8a7d6b" }} aria-label="GitHub">
                   <Globe className="w-4 h-4" />
                 </a>
-                <a href="#" className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#6b7a99" : "#8a7d6b" }} aria-label="Twitter">
+                <button type="button" onClick={onSignIn} className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#6b7a99" : "#8a7d6b" }} aria-label="Contact support">
                   <Users className="w-4 h-4" />
-                </a>
-                <a href="#" className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110" style={{ background: isDark ? "#252d40" : "#f0e5d8", color: isDark ? "#6b7a99" : "#8a7d6b" }} aria-label="LinkedIn">
-                  <Users className="w-4 h-4" />
-                </a>
+                </button>
               </div>
             </div>
 
@@ -859,8 +856,8 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
                 <li><a href="#features" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Features</a></li>
                 <li><a href="#how-it-works" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>How it works</a></li>
                 <li><a href="#pricing" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Pricing</a></li>
-                <li><a href="#" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Changelog</a></li>
-                <li><a href="#" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Roadmap</a></li>
+                <li><span className={clsx("text-sm", subtext)}>Changelog</span></li>
+                <li><span className={clsx("text-sm", subtext)}>Roadmap</span></li>
               </ul>
             </nav>
 
@@ -868,21 +865,21 @@ export function Landing({ onTryNow, onSignIn, isDark = false }: LandingProps) {
             <nav>
               <h4 className={clsx("font-semibold text-sm uppercase tracking-wider mb-3", text)}>Company</h4>
               <ul className="space-y-2.5">
-                <li><a href="#" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>About</a></li>
-                <li><a href="#" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Contact</a></li>
-                <li><a href="#" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Privacy</a></li>
-                <li><a href="#" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Terms</a></li>
+                <li><a href="#top" className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>About</a></li>
+                <li><button type="button" onClick={onSignIn} className={clsx("text-sm transition-colors", subtext, "hover:text-current")}>Contact</button></li>
+                <li><span className={clsx("text-sm", subtext)}>Privacy</span></li>
+                <li><span className={clsx("text-sm", subtext)}>Terms</span></li>
               </ul>
             </nav>
           </div>
 
           {/* Bottom Bar */}
-          <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-3" style={{ borderTopColor: isDark ? "#2d3548" : "#d8d0c4" }}>
+          <div className="pt-6 border-t flex flex-col md:flex-row items-center justify-between gap-3" style={{ borderColor: isDark ? "#2d3548" : "#d8d0c4" }}>
             <p className={clsx("text-[11px]", subtext)}>© 2026 PDFChat. All rights reserved.</p>
             <div className="flex items-center gap-5">
-              <a href="#" className={clsx("text-[11px] transition-colors", subtext, "hover:text-current")}>Privacy</a>
-              <a href="#" className={clsx("text-[11px] transition-colors", subtext, "hover:text_current")}>Terms</a>
-              <a href="#" className={clsx("text-[11px] transition-colors", subtext, "hover:text-current")}>Security</a>
+              <span className={clsx("text-[11px]", subtext)}>Privacy</span>
+              <span className={clsx("text-[11px]", subtext)}>Terms</span>
+              <a href="https://github.com/RohanPengonda/PDFChat" target="_blank" rel="noreferrer" className={clsx("text-[11px] transition-colors", subtext, "hover:text-current")}>Security</a>
             </div>
           </div>
         </div>
